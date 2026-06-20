@@ -9,3 +9,4 @@ lxml
 google-generativeai
 requests
 ta
+scikit-learn

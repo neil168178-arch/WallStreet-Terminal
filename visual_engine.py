@@ -40,24 +40,30 @@ def setup_page():
         }
         [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] span { color: #BDBDBD !important; font-size: 16px !important; }
         
-        /* 淺色背景區塊與按鈕：智慧動態對比 */
+        /* ======================================================== */
+        /* 🚀 終極修復：輸入框與下拉選單統一為「高質感深灰底 + 白字」 */
+        /* ======================================================== */
         .stApp input, .stApp div[data-baseweb="base-input"] { 
-            background-color: #FFFFFF !important; color: #0E1117 !important; font-size: 16px !important; 
+            background-color: #262730 !important; color: #FFFFFF !important; font-size: 16px !important; 
+            border-color: #4A4A4A !important;
         }
         
         .stApp div[data-baseweb="select"], .stApp div[data-baseweb="select"] > div {
-            background-color: #FFFFFF !important; border-color: #CCCCCC !important; 
+            background-color: #262730 !important; border-color: #4A4A4A !important; 
         }
         .stApp div[data-baseweb="select"] span, .stApp div[data-baseweb="select"] div, .stApp div[data-baseweb="select"] p {
-            color: #0E1117 !important;
+            color: #FFFFFF !important;
         }
         
         div[data-baseweb="popover"], ul[role="listbox"], ul[role="listbox"] li, ul[role="listbox"] div {
-            background-color: #FFFFFF !important; 
+            background-color: #262730 !important; 
         }
         div[data-baseweb="popover"] span, div[data-baseweb="popover"] div, div[data-baseweb="popover"] p,
-        ul[role="listbox"] span, ul[role="listbox"] div, ul[role="listbox"] p { color: #0E1117 !important; }
-        [data-baseweb="icon"] svg { fill: #0E1117 !important; color: #0E1117 !important; }
+        ul[role="listbox"] span, ul[role="listbox"] div, ul[role="listbox"] p { color: #FFFFFF !important; }
+        
+        /* 確保下拉選單旁邊的小箭頭也是白色的 */
+        [data-baseweb="icon"] svg { fill: #FFFFFF !important; color: #FFFFFF !important; }
+        /* ======================================================== */
 
         div.stButton > button {
             background-color: #2A2D3E !important; border: 1px solid #4A4D5E !important; color: #FFFFFF !important;

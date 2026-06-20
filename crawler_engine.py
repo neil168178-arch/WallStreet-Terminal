@@ -3,36 +3,36 @@ import yfinance as yf
 import re
 import streamlit as st
 import concurrent.futures
-import requests  # 🌟 改用內建的網頁請求模組
+import requests
 
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     """
-    🌟 全新升級：從「台灣政府開放資料」直接獲取全台股中文名稱字典
-    速度更快、無需第三方套件，自動分辨 上市(.TW) 與 上櫃(.TWO)
+    🌟 修正版：從台灣證交所與櫃買中心獲取股票的【中文簡稱】（例如：台積電、聯發科）
+    解決因官方正式全銜（如：台灣積體電路製造股份有限公司）導致中文搜尋不到的問題。
     """
     name_dict = {}
     try:
-        # 1. 抓取上市股票 (.TW)
-        twse_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+        # 1. 抓取上市股票簡稱 (.TW) -> 使用每日收盤行情 API
+        twse_url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
         res_twse = requests.get(twse_url, timeout=10)
         if res_twse.status_code == 200:
             for item in res_twse.json():
-                stock_id = str(item.get("公司代號", "")).strip()
-                stock_name = str(item.get("公司名稱", "")).strip()
+                stock_id = str(item.get("證券代號", "")).strip()
+                stock_name = str(item.get("證券名稱", "")).strip()
                 if len(stock_id) >= 4 and stock_id.isdigit():
                     full_ticker = f"{stock_id}.TW"
                     name_dict[full_ticker] = stock_name
                     name_dict[stock_name] = full_ticker
                     name_dict[stock_id] = full_ticker
 
-        # 2. 抓取上櫃股票 (.TWO)
-        tpex_url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+        # 2. 抓取上櫃股票簡稱 (.TWO) -> 使用櫃買每日收盤行情 API
+        tpex_url = "https://www.tpex.org.tw/openapi/v1/t13stk04"
         res_tpex = requests.get(tpex_url, timeout=10)
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
-                stock_id = str(item.get("公司代號", "")).strip()
-                stock_name = str(item.get("公司名稱", "")).strip()
+                stock_id = str(item.get("SecuritiesCompanyCode", "")).strip()
+                stock_name = str(item.get("PaperName", "")).strip()
                 if len(stock_id) >= 4 and stock_id.isdigit():
                     full_ticker = f"{stock_id}.TWO"
                     name_dict[full_ticker] = stock_name
@@ -40,7 +40,7 @@ def load_tw_stock_names():
                     name_dict[stock_id] = full_ticker
 
     except Exception as e:
-        print(f"官方 OpenData 股票名稱獲取失敗: {e}")
+        print(f"官方 OpenData 股票簡稱獲取失敗: {e}")
 
     # 3. 疊加基本的安全名單 (Fallback 防呆機制)
     fallback = _get_fallback_stock_map()
@@ -75,12 +75,17 @@ def resolve_ticker(input_str):
     if re.match(r'^\d{4,6}\.TW[O]?$', input_str.upper()):
         return input_str.upper()
         
-    # 呼叫我們的智慧快取字典
+    # 呼叫智慧快取字典
     stock_map = load_tw_stock_names()
     
-    # 2. 直接去字典找 (支援「中文」與「純數字」)
+    # 2. 直接去字典找精準匹配 (支援「中文簡稱」與「純數字」)
     if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]):
         return stock_map[input_str]
+        
+    # 🌟 智慧模糊比對：如果使用者輸入「台積」或「聯發」，也能自動模糊匹配成功！
+    for key, value in stock_map.items():
+        if "." in str(value) and (input_str in str(key)):
+            return value
         
     # 3. 真的找不到，才盲猜 .TW
     if input_str.isdigit() and 4 <= len(input_str) <= 6:

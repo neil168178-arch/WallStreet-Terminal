@@ -41,28 +41,42 @@ def setup_page():
         [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] span { color: #BDBDBD !important; font-size: 16px !important; }
         
         /* ======================================================== */
-        /* 🚀 終極修復：輸入框與下拉選單統一為「高質感深灰底 + 白字」 */
+        /* 🚀 終極修復：擊破 Streamlit React Portal 浮動選單限制 */
         /* ======================================================== */
+        /* 1. 下拉選單「框框」本體 */
+        div[data-baseweb="select"] > div {
+            background-color: #262730 !important; 
+            border-color: #4A4A4A !important;
+        }
+        div[data-baseweb="select"] * {
+            color: #FFFFFF !important;
+        }
+        
+        /* 2. 穿透覆蓋：真正展開的那塊「浮動幽靈選單」 (全局鎖定) */
+        div[data-baseweb="popover"] * {
+            color: #FFFFFF !important;
+        }
+        ul[data-baseweb="menu"] {
+            background-color: #262730 !important;
+        }
+        li[role="option"] {
+            background-color: #262730 !important;
+            color: #FFFFFF !important;
+        }
+        li[role="option"] * {
+            color: #FFFFFF !important;
+        }
+        /* 滑鼠移過去的時候變成紅色，質感大提升 */
+        li[role="option"]:hover, li[aria-selected="true"] {
+            background-color: #FF4B4B !important;
+            color: #FFFFFF !important;
+        }
+        
+        /* 其他輸入框 */
         .stApp input, .stApp div[data-baseweb="base-input"] { 
             background-color: #262730 !important; color: #FFFFFF !important; font-size: 16px !important; 
             border-color: #4A4A4A !important;
         }
-        
-        .stApp div[data-baseweb="select"], .stApp div[data-baseweb="select"] > div {
-            background-color: #262730 !important; border-color: #4A4A4A !important; 
-        }
-        .stApp div[data-baseweb="select"] span, .stApp div[data-baseweb="select"] div, .stApp div[data-baseweb="select"] p {
-            color: #FFFFFF !important;
-        }
-        
-        div[data-baseweb="popover"], ul[role="listbox"], ul[role="listbox"] li, ul[role="listbox"] div {
-            background-color: #262730 !important; 
-        }
-        div[data-baseweb="popover"] span, div[data-baseweb="popover"] div, div[data-baseweb="popover"] p,
-        ul[role="listbox"] span, ul[role="listbox"] div, ul[role="listbox"] p { color: #FFFFFF !important; }
-        
-        /* 確保下拉選單旁邊的小箭頭也是白色的 */
-        [data-baseweb="icon"] svg { fill: #FFFFFF !important; color: #FFFFFF !important; }
         /* ======================================================== */
 
         div.stButton > button {

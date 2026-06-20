@@ -8,31 +8,34 @@ import requests
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     """
-    🌟 修正版：從台灣證交所與櫃買中心獲取股票的【中文簡稱】（例如：台積電、聯發科）
-    解決因官方正式全銜（如：台灣積體電路製造股份有限公司）導致中文搜尋不到的問題。
+    🌟 終極修正版：使用最穩定的官方基本資料 API，並精準抓取「公司簡稱」！
     """
     name_dict = {}
     try:
-        # 1. 抓取上市股票簡稱 (.TW) -> 使用每日收盤行情 API
-        twse_url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        # 1. 抓取上市股票 (.TW)
+        twse_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
         res_twse = requests.get(twse_url, timeout=10)
         if res_twse.status_code == 200:
             for item in res_twse.json():
-                stock_id = str(item.get("證券代號", "")).strip()
-                stock_name = str(item.get("證券名稱", "")).strip()
+                stock_id = str(item.get("公司代號", "")).strip()
+                # 🌟 關鍵修正：優先抓取「公司簡稱」(例如:群創)，如果沒有才抓「公司名稱」
+                stock_name = str(item.get("公司簡稱", item.get("公司名稱", ""))).strip()
+                
                 if len(stock_id) >= 4 and stock_id.isdigit():
                     full_ticker = f"{stock_id}.TW"
                     name_dict[full_ticker] = stock_name
                     name_dict[stock_name] = full_ticker
                     name_dict[stock_id] = full_ticker
 
-        # 2. 抓取上櫃股票簡稱 (.TWO) -> 使用櫃買每日收盤行情 API
-        tpex_url = "https://www.tpex.org.tw/openapi/v1/t13stk04"
+        # 2. 抓取上櫃股票 (.TWO)
+        tpex_url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
         res_tpex = requests.get(tpex_url, timeout=10)
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
-                stock_id = str(item.get("SecuritiesCompanyCode", "")).strip()
-                stock_name = str(item.get("PaperName", "")).strip()
+                stock_id = str(item.get("公司代號", "")).strip()
+                # 🌟 關鍵修正：優先抓取「公司簡稱」
+                stock_name = str(item.get("公司簡稱", item.get("公司名稱", ""))).strip()
+                
                 if len(stock_id) >= 4 and stock_id.isdigit():
                     full_ticker = f"{stock_id}.TWO"
                     name_dict[full_ticker] = stock_name
@@ -51,10 +54,11 @@ def load_tw_stock_names():
     return name_dict
 
 def _get_fallback_stock_map():
-    # 建立基礎的雙向字典 (當政府 API 維修時的備用電源)
+    # 建立基礎的雙向字典 (加入面板雙虎：群創、友達)
     base_map = {
         "2330.TW": "台積電", "2317.TW": "鴻海", "2454.TW": "聯發科", "2603.TW": "長榮",
         "2498.TW": "宏達電", "2303.TW": "聯電", "3231.TW": "緯創", "2376.TW": "技嘉",
+        "3481.TW": "群創", "2409.TW": "友達", 
         "3675.TWO": "德微", "3293.TWO": "鈊象", "3105.TWO": "穩懋", "8069.TWO": "元太"
     }
     res = {}
@@ -75,18 +79,18 @@ def resolve_ticker(input_str):
     if re.match(r'^\d{4,6}\.TW[O]?$', input_str.upper()):
         return input_str.upper()
         
-    # 呼叫智慧快取字典
+    # 呼叫我們的智慧快取字典
     stock_map = load_tw_stock_names()
     
-    # 2. 直接去字典找精準匹配 (支援「中文簡稱」與「純數字」)
+    # 2. 直接去字典找 (支援「中文簡稱」與「純數字」)
     if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]):
         return stock_map[input_str]
         
-    # 🌟 智慧模糊比對：如果使用者輸入「台積」或「聯發」，也能自動模糊匹配成功！
+    # 🌟 智慧模糊比對：輸入「群創」或「台積」也能精準命中！
     for key, value in stock_map.items():
         if "." in str(value) and (input_str in str(key)):
             return value
-        
+            
     # 3. 真的找不到，才盲猜 .TW
     if input_str.isdigit() and 4 <= len(input_str) <= 6:
         return f"{input_str}.TW"

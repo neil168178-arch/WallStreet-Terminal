@@ -3,46 +3,55 @@ import yfinance as yf
 import re
 import streamlit as st
 import concurrent.futures
-from FinMind.data import DataLoader
+import requests  # 🌟 改用內建的網頁請求模組
 
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     """
-    從 FinMind 獲取並快取全台股中文名稱字典，並自動分辨 上市(.TW) 與 上櫃(.TWO)
+    🌟 全新升級：從「台灣政府開放資料」直接獲取全台股中文名稱字典
+    速度更快、無需第三方套件，自動分辨 上市(.TW) 與 上櫃(.TWO)
     """
+    name_dict = {}
     try:
-        dl = DataLoader()
-        df_twse = dl.taiwan_stock_info()
-        name_dict = {}
-        
-        if df_twse is not None and not df_twse.empty:
-            for _, row in df_twse.iterrows():
-                stock_id = str(row['stock_id'])
-                stock_name = str(row['stock_name'])
-                market_type = str(row.get('type', '')).lower()
-                
-                # 🌟 核心修復：判斷是上市 (twse -> .TW) 還是上櫃 (tpex -> .TWO)
-                suffix = ".TWO" if market_type == 'tpex' else ".TW"
-                
+        # 1. 抓取上市股票 (.TW)
+        twse_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+        res_twse = requests.get(twse_url, timeout=10)
+        if res_twse.status_code == 200:
+            for item in res_twse.json():
+                stock_id = str(item.get("公司代號", "")).strip()
+                stock_name = str(item.get("公司名稱", "")).strip()
                 if len(stock_id) >= 4 and stock_id.isdigit():
-                    full_ticker = f"{stock_id}{suffix}"
-                    name_dict[full_ticker] = stock_name  # 例: 3675.TWO -> 德微
-                    name_dict[stock_name] = full_ticker  # 例: 德微 -> 3675.TWO
-                    name_dict[stock_id] = full_ticker    # 🌟 例: 3675 -> 3675.TWO (解決輸入純數字的痛點)
-        
-        # 加入預設的安全名單 (Fallback)
-        fallback = _get_fallback_stock_map()
-        for k, v in fallback.items():
-            if k not in name_dict:
-                name_dict[k] = v
-                
-        return name_dict
+                    full_ticker = f"{stock_id}.TW"
+                    name_dict[full_ticker] = stock_name
+                    name_dict[stock_name] = full_ticker
+                    name_dict[stock_id] = full_ticker
+
+        # 2. 抓取上櫃股票 (.TWO)
+        tpex_url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+        res_tpex = requests.get(tpex_url, timeout=10)
+        if res_tpex.status_code == 200:
+            for item in res_tpex.json():
+                stock_id = str(item.get("公司代號", "")).strip()
+                stock_name = str(item.get("公司名稱", "")).strip()
+                if len(stock_id) >= 4 and stock_id.isdigit():
+                    full_ticker = f"{stock_id}.TWO"
+                    name_dict[full_ticker] = stock_name
+                    name_dict[stock_name] = full_ticker
+                    name_dict[stock_id] = full_ticker
+
     except Exception as e:
-        print(f"FinMind 股票名稱獲取失敗: {e}")
-        return _get_fallback_stock_map()
+        print(f"官方 OpenData 股票名稱獲取失敗: {e}")
+
+    # 3. 疊加基本的安全名單 (Fallback 防呆機制)
+    fallback = _get_fallback_stock_map()
+    for k, v in fallback.items():
+        if k not in name_dict:
+            name_dict[k] = v
+            
+    return name_dict
 
 def _get_fallback_stock_map():
-    # 建立基礎的雙向字典 (加入常見上櫃股票如: 鈊象, 穩懋, 元太等)
+    # 建立基礎的雙向字典 (當政府 API 維修時的備用電源)
     base_map = {
         "2330.TW": "台積電", "2317.TW": "鴻海", "2454.TW": "聯發科", "2603.TW": "長榮",
         "2498.TW": "宏達電", "2303.TW": "聯電", "3231.TW": "緯創", "2376.TW": "技嘉",
@@ -56,9 +65,7 @@ def _get_fallback_stock_map():
     return res
 
 def resolve_ticker(input_str):
-    """
-    強化的股票代號翻譯引擎
-    """
+    """強化的股票代號翻譯引擎"""
     if not input_str:
         return None
         
@@ -71,7 +78,7 @@ def resolve_ticker(input_str):
     # 呼叫我們的智慧快取字典
     stock_map = load_tw_stock_names()
     
-    # 2. 直接去字典找 (支援「中文」與「純數字」，它會自動幫我們判斷是 .TW 還是 .TWO)
+    # 2. 直接去字典找 (支援「中文」與「純數字」)
     if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]):
         return stock_map[input_str]
         

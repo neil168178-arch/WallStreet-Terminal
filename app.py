@@ -77,7 +77,7 @@ def add_to_watchlist(ticker):
         st.session_state.watchlist.append(ticker)
         st.rerun()
     except Exception as e:
-        st.error("⚠️ 該股票可能已在名單中，或資料庫連線異常。")
+        st.error("⚠️ 該標的可能已在名單中，或資料庫連線異常。")
 
 def remove_from_watchlist(ticker):
     sb = get_supabase()
@@ -204,29 +204,49 @@ def main_app():
         "🌍 投資組合回測 (多檔)"
     ], help="這裡是你切換各種超強工具的地方！")
     
+    # ==========================================
+    # 🌟 核心升級：ETF 與個股模式切換器
+    # ==========================================
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚙️ 終端機操作模式")
+    app_mode = st.sidebar.radio(
+        "選擇您的分析標的：", 
+        ["📈 個股波段模式", "📊 ETF 存股模式"]
+    )
+
+    if app_mode == "📈 個股波段模式":
+        st.sidebar.success("目前模式：個股基本面與技術分析")
+        placeholder_add = "例如：台積電, 2330"
+        default_search = "台積電"
+    else:
+        st.sidebar.info("目前模式：ETF 基金與資產配置")
+        placeholder_add = "例如：0050, 元大美債"
+        default_search = "0050"
+
+    # ==========================================
+
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📝 雲端名單管理")
-    new_stock_input = st.sidebar.text_input("➕ 新增股票", placeholder="輸入代號(如 2330)", help="把你想關注的股票加入『觀察名單』，系統會幫你 24 小時盯著它！")
+    new_stock_input = st.sidebar.text_input("➕ 新增標的", placeholder=placeholder_add, help="把你想關注的標的加入『觀察名單』，系統會幫你 24 小時盯著它！")
     if st.sidebar.button("加入觀察名單", use_container_width=True):
         if new_stock_input:
             new_stock = resolve_ticker(new_stock_input)
             if new_stock is None: st.sidebar.error(f"⚠️ 找不到「{new_stock_input}」！")
             elif new_stock not in st.session_state.watchlist: add_to_watchlist(new_stock)
-            else: st.sidebar.warning("⚠️ 該股票已在您的觀察名單中了！")
+            else: st.sidebar.warning("⚠️ 該標的已在您的觀察名單中了！")
 
     if st.session_state.watchlist:
-        remove_stock = st.sidebar.selectbox("🗑️ 刪除股票", [""] + st.session_state.watchlist, help="想取消關注誰？從這裡刪除。")
+        remove_stock = st.sidebar.selectbox("🗑️ 刪除標的", [""] + st.session_state.watchlist, help="想取消關注誰？從這裡刪除。")
         if st.sidebar.button("移除", use_container_width=True):
             if remove_stock in st.session_state.watchlist: remove_from_watchlist(remove_stock)
 
     st.sidebar.markdown("---")
-    # 🌟 金鑰輸入區塊：預設帶入雲端記憶的值
+    # 🌟 金鑰輸入區塊
     st.sidebar.markdown("### ✈️ 盤後推播與 AI 鑰匙")
     tg_token_input = st.sidebar.text_input("🤖 TG Bot Token", value=st.session_state.get('tg_token', ''), type="password", help="在 Telegram 搜尋 @BotFather 創建機器人取得的 Token")
     tg_chat_id_input = st.sidebar.text_input("💬 TG Chat ID", value=st.session_state.get('tg_chat_id', ''), type="password", help="在 Telegram 搜尋 @userinfobot 獲取你的數字 ID")
     gemini_key_input = st.sidebar.text_input("🧠 Gemini AI 鑰匙", value=st.session_state.get('gemini_key', ''), type="password", help="填入 Google AI 金鑰，解鎖系統閱讀新聞的能力！")
 
-    # 🌟 新增：一鍵加密儲存按鈕
     if st.sidebar.button("💾 記憶我的專屬金鑰 (安全儲存)", use_container_width=True):
         save_user_settings(tg_token_input, tg_chat_id_input, gemini_key_input)
         
@@ -244,7 +264,7 @@ def main_app():
         'rsi_reversion': '3️⃣ RSI 抄底 (適合跌深反彈)', 'bb_breakout': '4️⃣ 布林通道 (適合抓突破箱型)', 'combined': '5️⃣ 👑 多因子濾網 (勝率最高)'
     }
     inv_strat_side = {v: k for k, v in strategy_dict_sidebar.items()}
-    scan_strategy_name = st.sidebar.selectbox("🎯 監控策略", list(inv_strat_side.keys()), help="你希望系統用哪一招幫你挑股票？")
+    scan_strategy_name = st.sidebar.selectbox("🎯 監控策略", list(inv_strat_side.keys()), help="你希望系統用哪一招幫你挑標的？")
     
     if st.sidebar.button("🚀 執行盤後雷達掃描", type="primary", use_container_width=True):
         if tg_token_input and tg_chat_id_input:
@@ -279,7 +299,7 @@ def main_app():
 
         with tab1:
             with st.expander("📖 白話文教學：如何使用記帳本？", expanded=False):
-                st.write("這是一個連線到雲端的記帳本。在表格裡輸入你手邊有買的股票代號、買了幾股（一張填 1000）、花了多少錢。輸入完記得按下「儲存至雲端」，接著按「結算損益」，系統就會幫你抓最新股價算出現賺多少！")
+                st.write("這是一個連線到雲端的記帳本。在表格裡輸入你手邊有買的標的代號、買了幾股（一張填 1000）、花了多少錢。輸入完記得按下「儲存至雲端」，接著按「結算損益」，系統就會幫你抓最新股價算出現賺多少！")
             
             st.session_state.portfolio = st.data_editor(st.session_state.portfolio, num_rows="dynamic", use_container_width=True)
             if st.button("☁️ 儲存投資組合至雲端資料庫", use_container_width=True): save_portfolio()
@@ -301,7 +321,7 @@ def main_app():
         with tab2:
             st.markdown("### 🏆 觀察名單多因子量化評分")
             with st.expander("📖 白話文教學：這分數怎麼算的？", expanded=True):
-                st.write("不知道手邊的名單該先買哪檔嗎？系統會用華爾街最紅的「多因子模型」幫股票打分 (滿分100)：\n\n1. **便宜度 (本益比)**：越便宜分數越高。\n2. **獲利力 (EPS)**：公司越會賺錢分數越高。\n3. **強勢度 (乖離率)**：最近趨勢越猛分數越高。\n\n⚠️ **【重要提示】** 這個分數是「排名機制(PR值)」，意思是股票互相比較出來的名次。如果你左邊的觀察名單**只有1檔股票**，那它當然是全班第一名，會得到三個100分！建議多加幾檔股票，或是把清單清空讓系統掃描「台灣50大權值股」，分數才會精準喔！")
+                st.write("不知道手邊的名單該先買哪檔嗎？系統會用華爾街最紅的「多因子模型」幫標的打分 (滿分100)：\n\n1. **便宜度 (本益比)**：越便宜分數越高。\n2. **獲利力 (EPS)**：公司越會賺錢分數越高。\n3. **強勢度 (乖離率)**：最近趨勢越猛分數越高。\n\n⚠️ **【重要提示】** 這個分數是「排名機制(PR值)」，意思是標的互相比較出來的名次。如果你左邊的觀察名單**只有1檔標的**，那它當然是全班第一名，會得到三個100分！建議多加幾檔，分數才會精準喔！")
             
             if st.button("⚡ 啟動量化評分引擎", type="primary"): 
                 with st.spinner("10 核心引擎正在幫全市場打分數..."):
@@ -310,7 +330,7 @@ def main_app():
 
     elif page == "📋 觀察名單總覽 (報價牆)":
         st.markdown("## 📋 即時報價與基本面牆")
-        st.info("👋 這裡列出了你所有關注股票的即時價格，以及它們的「健康檢查表（基本面）」。")
+        st.info("👋 這裡列出了你所有關注標的的即時價格，以及它們的「健康檢查表（基本面）」。")
         
         if not st.session_state.watchlist: st.warning("⚠️ 你的觀察名單是空的，請先在左邊欄位新增！")
         else:
@@ -329,10 +349,13 @@ def main_app():
                 render_dataframe(crawler_res, hide_index=True)
 
     elif page == "🎯 個股深度分析 (單檔)":
-        st.markdown("## 🎯 個股深度 X光機")
-        target_stock = resolve_ticker(st.text_input("🔍 搜尋想分析的股票", value="台積電", help="輸入股票代號(如2330)或中文名稱，按下 Enter！"))
+        mode_text = app_mode.split(' ')[1] # 擷取字眼: "個股波段模式" 或 "ETF"
+        st.markdown(f"## 🎯 深度 X光機 ({mode_text})")
         
-        if not target_stock: st.warning("⚠️ 找不到該股票。")
+        # 🌟 這裡套用了上面的動態預設搜尋
+        target_stock = resolve_ticker(st.text_input(f"🔍 搜尋想分析的標的", value=default_search, help="輸入代號或中文名稱，按下 Enter！"))
+        
+        if not target_stock: st.warning("⚠️ 找不到該標的。")
         else:
             tabA, tabB, tabC, tabD, tabF, tabG, tabH = st.tabs([
                 "⚡ 盤中心電圖", "📈 技術看盤畫布", "⏳ 時光機回測", "🔮 未來預測", 
@@ -340,7 +363,7 @@ def main_app():
             ])
             
             with tabA:
-                with st.expander("📖 這是什麼圖？"): st.write("這是『分時閃電圖』，展示這檔股票在『今天盤中』每一分鐘的走勢，適合愛玩當沖的短線玩家看主力動向。")
+                with st.expander("📖 這是什麼圖？"): st.write("這是『分時閃電圖』，展示這檔標的在『今天盤中』每一分鐘的走勢，適合愛玩當沖的短線玩家看主力動向。")
                 df, name = fetch_intraday_data(target_stock)
                 if not df.empty: st.plotly_chart(plot_intraday_chart(df, target_stock, name), use_container_width=True)
             
@@ -455,7 +478,7 @@ def main_app():
 
             with tabD:
                 with st.expander("📖 什麼是蒙地卡羅預測？"):
-                    st.write("就像奇異博士看未來一樣！電腦會用高等數學，模擬這檔股票未來 1000 種可能的走勢，然後告訴你：它一個月後上漲的機率到底大不大？")
+                    st.write("就像奇異博士看未來一樣！電腦會用高等數學，模擬這檔標的未來 1000 種可能的走勢，然後告訴你：它一個月後上漲的機率到底大不大？")
                 if st.button("🔮 啟動平行宇宙模擬器", type="primary"):
                     df_pred = load_data(target_stock, period="1y")
                     if not df_pred.empty:
@@ -487,7 +510,7 @@ def main_app():
             
             with tabG:
                 with st.expander("📖 什麼是機器學習？"):
-                    st.write("AI 會像學生背考古題一樣，把這檔股票過去一年的技術指標全部背下來，然後預測明天它是漲還是跌！(純供參考，不代表一定會中)")
+                    st.write("AI 會像學生背考古題一樣，把這檔標的過去一年的技術指標全部背下來，然後預測明天它是漲還是跌！(純供參考，不代表一定會中)")
                 if st.button("🧠 叫 AI 預測明天漲跌", type="primary"):
                     df_ai = load_data(target_stock, period="1y")
                     if not df_ai.empty:
@@ -497,7 +520,7 @@ def main_app():
             with tabH:
                 st.markdown(f"### 💰 資金控管建議：我該買幾張？")
                 with st.expander("📖 為什麼這功能是散戶救星？", expanded=True):
-                    st.write("「全押」是散戶破產的主因！真正的贏家會先問：「這筆如果看錯，我最多只能賠多少？」\n這個計算機會看這檔股票近期的『脾氣（震盪幅度）』，幫你算出**最安全、就算停損也不會痛的買進張數**。")
+                    st.write("「全押」是散戶破產的主因！真正的贏家會先問：「這筆如果看錯，我最多只能賠多少？」\n這個計算機會看這檔標的近期的『脾氣（震盪幅度）』，幫你算出**最安全、就算停損也不會痛的買進張數**。")
 
                 df_pos = load_data(target_stock, period="3mo")
                 if df_pos is not None and not df_pos.empty and len(df_pos) > 15:
@@ -530,12 +553,12 @@ def main_app():
 
                         st.markdown("#### 🎯 AI 精算安全方案")
                         m1, m2, m3, m4 = st.columns(4)
-                        m1.metric("目前的股價", f"${latest_close:.2f}")
+                        m1.metric("目前的價格", f"${latest_close:.2f}")
                         m2.metric("跌到這價位就逃命", f"${stop_loss_price:.2f}", f"-{stop_loss_dist:.2f} (跌 {(stop_loss_dist/latest_close*100):.1f}%)", delta_color="inverse")
                         m3.metric("💡 系統建議買進股數", f"{recommended_shares:,} 股", f"約等於 {recommended_shares/1000:.1f} 張")
                         m4.metric("總共需要花費", f"${actual_invest_amount:,.0f}", f"佔你的總本金 {(actual_invest_amount/user_capital*100):.1f}%")
 
-                        st.success(f"> **💡 戰略分析：** 如果你照著建議買了 **{recommended_shares:,} 股**，就算明天運氣極差，股價崩盤觸發了逃命價 **${stop_loss_price:.2f}**，你也只會損失大約 **${int(max_loss_amount):,}**。這完美控制在你規定的 **{risk_tolerance}%** 虧損紅線內，這就是長期致富的秘訣！")
+                        st.success(f"> **💡 戰略分析：** 如果你照著建議買了 **{recommended_shares:,} 股**，就算明天運氣極差，崩盤觸發了逃命價 **${stop_loss_price:.2f}**，你也只會損失大約 **${int(max_loss_amount):,}**。這完美控制在你規定的 **{risk_tolerance}%** 虧損紅線內，這就是長期致富的秘訣！")
 
     elif page == "🌍 投資組合回測 (多檔)":
         st.markdown("## 🌍 幫整個清單做大回測")
@@ -543,7 +566,7 @@ def main_app():
             st.write("前面的回測是一檔一檔測，這個引擎是**拿一筆總資金，讓系統自動在你的『觀察名單』裡到處尋找獵物買賣**！這最接近真實法人的量化基金操作方式。")
             
         if not st.session_state.watchlist:
-            st.warning("⚠️ 你的觀察名單是空的，請先去左側新增股票，系統才有東西可以測！")
+            st.warning("⚠️ 你的觀察名單是空的，請先去左側新增標的，系統才有東西可以測！")
             return
 
         strategy_dict_port = {
@@ -562,7 +585,7 @@ def main_app():
         f1, f2, f3 = st.columns(3)
         with f1: use_filter_p = st.checkbox("🛡️ 啟動 60MA 熊市保護傘", value=True, key='p_f')
         with f2: allow_short_p = st.checkbox("🐻 允許基金放空", value=False, key='p_sh')
-        with f3: max_alloc = st.slider("單檔股票最高只能佔用總資金的比例", 0.1, 1.0, 0.2, 0.1, help="避免雞蛋放在同一個籃子裡")
+        with f3: max_alloc = st.slider("單檔標的最高只能佔用總資金的比例", 0.1, 1.0, 0.2, 0.1, help="避免雞蛋放在同一個籃子裡")
         
         use_atr_p = st.checkbox("🛡️ 啟用 ATR 動態防護網", value=True, key='p_atr')
         if use_atr_p:

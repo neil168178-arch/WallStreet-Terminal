@@ -1,4 +1,4 @@
-name: 🤖 每日量化雷達自動掃描
+name : 🤖 每日量化雷達自動掃描
 
 on:
   schedule:

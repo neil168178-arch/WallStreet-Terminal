@@ -183,30 +183,23 @@ def auth_page():
 def main_app():
     inject_custom_css()
     
-    # 🌟 👇 新增：手機版專屬 CSS 縮骨功補丁 👇 🌟
     st.markdown("""
     <style>
     /* 📱 專屬手機端 (螢幕寬度小於 768px) 的優化 */
     @media (max-width: 768px) {
-        /* 1. 消除兩側多餘的留白，把螢幕撐到最滿 */
         .block-container {
             padding-top: 1.5rem !important;
             padding-left: 0.5rem !important;
             padding-right: 0.5rem !important;
             padding-bottom: 1rem !important;
         }
-        
-        /* 2. 把標題字體縮小，避免一行字斷成三行 */
         h1 { font-size: 1.6rem !important; }
         h2 { font-size: 1.3rem !important; }
         h3 { font-size: 1.1rem !important; }
-        
-        /* 3. 優化手機上的 DataFrame (表格) 滾動體驗 */
         .stDataFrame { overflow-x: auto; }
     }
     </style>
     """, unsafe_allow_html=True)
-    # 🌟 👆 新增結束 👆 🌟
     
     if 'stock_watchlist' not in st.session_state: load_user_data()
     if 'tg_token' not in st.session_state: load_user_settings()
@@ -223,7 +216,6 @@ def main_app():
 
     st.sidebar.markdown("---")
     
-    # 🌟 核心雙擎切換器
     st.sidebar.markdown("### ⚙️ 終端機雙核心系統")
     app_mode = st.sidebar.radio("切換您的獨立操作系統：", ["📈 個股波段系統", "📊 ETF 存股系統"])
     is_etf_mode = (app_mode == "📊 ETF 存股系統")
@@ -345,7 +337,7 @@ def main_app():
                         cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)")
                     else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
             st.markdown("---")
-            with st.spinner("啟爬蟲抓取中..."):
+            with st.spinner("啟動爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)
                 render_dataframe(crawler_res, hide_index=True)
 
@@ -386,25 +378,32 @@ def main_app():
                     selected_strategy_name = st.selectbox("🧠 選擇回測招式", list(inv_strategy_dict.keys()))
                     selected_strategy = inv_strategy_dict[selected_strategy_name]
 
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1: initial_cap = st.number_input("💵 起始資金", min_value=10000, value=100000, step=10000)
-                    with c2: stop_loss = st.number_input("🛑 停損(%)", min_value=1.0, value=5.0, step=1.0)
-                    with c3: take_profit = st.number_input("🎉 停利(%)", min_value=1.0, value=15.0, step=1.0)
-                    with c4: 
-                        short_ma = st.number_input("短均線", min_value=3, value=5, step=1)
-                        long_ma = st.number_input("長均線", min_value=10, value=20, step=1)
+                    # 🌟 📱 行動優先改造 1：將單檔回測設定收納進 Expander，並採用雙欄(2 columns)排版
+                    with st.expander("⚙️ 點擊展開：進階回測參數與風控設定", expanded=False):
+                        c1, c2 = st.columns(2)
+                        with c1: 
+                            initial_cap = st.number_input("💵 起始資金", min_value=10000, value=100000, step=10000)
+                            short_ma = st.number_input("短均線", min_value=3, value=5, step=1)
+                            take_profit = st.number_input("🎉 停利(%)", min_value=1.0, value=15.0, step=1.0)
+                        with c2: 
+                            stop_loss = st.number_input("🛑 停損(%)", min_value=1.0, value=5.0, step=1.0)
+                            long_ma = st.number_input("長均線", min_value=10, value=20, step=1)
 
-                    f1, f2 = st.columns(2)
-                    with f1: use_filter = st.checkbox("大跌時不准買 (60MA 保護)", value=True)
-                    with f2: allow_short = st.checkbox("允許放空", value=False)
+                        st.markdown("---")
+                        f1, f2 = st.columns(2)
+                        with f1: use_filter = st.checkbox("大跌不買 (60MA保護)", value=True)
+                        with f2: allow_short = st.checkbox("允許放空", value=False)
 
-                    use_atr = st.checkbox("啟動 ATR 智能出場", value=False)
-                    if use_atr:
-                        a1, a2, a3 = st.columns(3)
-                        with a1: risk_pct_input = st.number_input("單筆風險 %", min_value=0.5, value=2.0, step=0.5)
-                        with a2: atr_sl_mult = st.number_input("停損寬度 (x ATR)", min_value=1.0, value=2.0, step=0.5)
-                        with a3: atr_tp_mult = st.number_input("停利遠度 (x ATR)", min_value=1.0, value=4.0, step=0.5)
-                    else: risk_pct_input, atr_sl_mult, atr_tp_mult = 2.0, 2.0, 4.0
+                        use_atr = st.checkbox("啟動 ATR 智能出場", value=False)
+                        if use_atr:
+                            a1, a2 = st.columns(2)
+                            with a1: 
+                                risk_pct_input = st.number_input("單筆風險 %", min_value=0.5, value=2.0, step=0.5)
+                                atr_sl_mult = st.number_input("停損寬度 (x ATR)", min_value=1.0, value=2.0, step=0.5)
+                            with a2: 
+                                atr_tp_mult = st.number_input("停利遠度 (x ATR)", min_value=1.0, value=4.0, step=0.5)
+                        else: 
+                            risk_pct_input, atr_sl_mult, atr_tp_mult = 2.0, 2.0, 4.0
 
                     col_btn1, col_btn2 = st.columns(2)
                     if col_btn1.button("🚀 測試這套策略！", type="primary", use_container_width=True):
@@ -454,7 +453,6 @@ def main_app():
                                 if heatmap_data is not None:
                                     st.success(f"🏆 破解完成！最強參數組合為：**短 {int(best_row['Short_MA'])}MA / 長 {int(best_row['Long_MA'])}MA**，可創造 **{best_row['ROI']:.2f}%** 報酬率！")
                                     st.plotly_chart(plot_optimization_heatmap(heatmap_data), use_container_width=True)
-
 
                 with tabD:
                     with st.expander("📖 什麼是蒙地卡羅預測？"):
@@ -580,23 +578,28 @@ def main_app():
         selected_strategy_name_port = st.selectbox("🧠 核心策略", list(inv_strategy_dict_port.keys()))
         selected_strategy_port = inv_strategy_dict_port[selected_strategy_name_port]
 
-        c1, c2, c3 = st.columns(3)
-        with c1: port_cap = st.number_input("💰 總資金", min_value=100000, value=1000000, step=100000)
-        with c2: short_ma_p = st.number_input("短均線", min_value=3, value=5, step=1, key='p_s')
-        with c3: long_ma_p = st.number_input("長均線", min_value=10, value=20, step=1, key='p_l')
-
-        f1, f2, f3 = st.columns(3)
-        with f1: use_filter_p = st.checkbox("🛡️ 60MA 保護", value=True, key='p_f')
-        with f2: allow_short_p = st.checkbox("🐻 允許放空", value=False, key='p_sh')
-        with f3: max_alloc = st.slider("單檔最高資金佔比", 0.1, 1.0, 0.2, 0.1)
-        
-        use_atr_p = st.checkbox("🛡️ ATR 動態防護", value=True, key='p_atr')
-        if use_atr_p:
-            a1, a2, a3 = st.columns(3)
-            with a1: risk_pct_p = st.number_input("單筆風險 (%)", value=2.0, step=0.5, key='p_r')
-            with a2: atr_sl_p = st.number_input("停損 (x ATR)", value=2.0, step=0.5, key='p_sl')
-            with a3: atr_tp_p = st.number_input("停利 (x ATR)", value=4.0, step=0.5, key='p_tp')
-        else: risk_pct_p, atr_sl_p, atr_tp_p = 2.0, 2.0, 4.0
+        # 🌟 📱 行動優先改造 2：將組合回測的繁雜設定，全部收納並改為雙欄排版
+        with st.expander("⚙️ 點擊展開：基金回測參數與資金控管", expanded=False):
+            c1, c2 = st.columns(2)
+            with c1: 
+                port_cap = st.number_input("💰 總資金", min_value=100000, value=1000000, step=100000)
+                short_ma_p = st.number_input("短均線", min_value=3, value=5, step=1, key='p_s')
+                use_filter_p = st.checkbox("🛡️ 60MA 保護", value=True, key='p_f')
+            with c2: 
+                max_alloc = st.slider("單檔最高資金佔比", 0.1, 1.0, 0.2, 0.1)
+                long_ma_p = st.number_input("長均線", min_value=10, value=20, step=1, key='p_l')
+                allow_short_p = st.checkbox("🐻 允許放空", value=False, key='p_sh')
+            
+            use_atr_p = st.checkbox("🛡️ ATR 動態防護", value=True, key='p_atr')
+            if use_atr_p:
+                a1, a2 = st.columns(2)
+                with a1: 
+                    risk_pct_p = st.number_input("單筆風險 (%)", value=2.0, step=0.5, key='p_r')
+                    atr_sl_p = st.number_input("停損 (x ATR)", value=2.0, step=0.5, key='p_sl')
+                with a2: 
+                    atr_tp_p = st.number_input("停利 (x ATR)", value=4.0, step=0.5, key='p_tp')
+            else: 
+                risk_pct_p, atr_sl_p, atr_tp_p = 2.0, 2.0, 4.0
             
         if st.button(f"🌍 啟動 {sys_name} 回測", type="primary", use_container_width=True):
             with st.spinner(f"交叉運算中..."):

@@ -77,36 +77,40 @@ def plot_intraday_chart(df, stock_id, company_name):
 
     # 介面最佳化設定
     fig.update_layout(
-        title=dict(text=f'⚡ {company_name} ({stock_id}) - 今日即時閃電走勢', font=dict(size=22, color="#E0E0E0")),
+        # 🌟 手機防護 1：縮小標題字體並鎖定位置，避免過長撞擊圖例
+        title=dict(
+            text=f'⚡ {company_name} ({stock_id}) - 今日即時走勢', 
+            font=dict(size=18, color="#E0E0E0"),
+            y=0.96, # 鎖定高度
+            x=0.02
+        ),
         height=550,
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#E0E0E0'),
-        margin=dict(l=50, r=50, b=50, t=50),
+        
+        # 🌟 手機防護 2：挑高天花板！將 t(Top) 拉高到 100，左右邊距縮小以適應手機
+        margin=dict(l=15, r=15, b=50, t=100), 
         hovermode='x unified',
         
-        # 對「整體排版 (Layout)」下達懸浮框標題白化的死命令
         hoverlabel=dict(
             bgcolor="#1E1E1E",       
             bordercolor="#333333",    
             font=dict(size=15, color="white") 
         ),
         
-        # 🌟 右上角圖例字體純白化 (這是真正成功的那一步！)
+        # 🌟 手機防護 3：將圖例位置精準向上推，與標題完美錯開
         legend=dict(
             orientation="h", 
             yanchor="bottom", 
-            y=1.02, 
+            y=1.05, 
             xanchor="right", 
             x=1,
-            font=dict(size=14, color="white")
+            font=dict(size=13, color="white")
         )
     )
 
-    # ==========================================
-    # 🌟 關鍵修復：我把那些導致當機的無效參數全部拔掉了！
-    # ==========================================
     fig.update_xaxes(
         tickfont=dict(color='#E0E0E0'), 
         gridcolor='rgba(255, 255, 255, 0.1)'

@@ -183,6 +183,31 @@ def auth_page():
 def main_app():
     inject_custom_css()
     
+    # 🌟 👇 新增：手機版專屬 CSS 縮骨功補丁 👇 🌟
+    st.markdown("""
+    <style>
+    /* 📱 專屬手機端 (螢幕寬度小於 768px) 的優化 */
+    @media (max-width: 768px) {
+        /* 1. 消除兩側多餘的留白，把螢幕撐到最滿 */
+        .block-container {
+            padding-top: 1.5rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+            padding-bottom: 1rem !important;
+        }
+        
+        /* 2. 把標題字體縮小，避免一行字斷成三行 */
+        h1 { font-size: 1.6rem !important; }
+        h2 { font-size: 1.3rem !important; }
+        h3 { font-size: 1.1rem !important; }
+        
+        /* 3. 優化手機上的 DataFrame (表格) 滾動體驗 */
+        .stDataFrame { overflow-x: auto; }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    # 🌟 👆 新增結束 👆 🌟
+    
     if 'stock_watchlist' not in st.session_state: load_user_data()
     if 'tg_token' not in st.session_state: load_user_settings()
         
@@ -320,7 +345,7 @@ def main_app():
                         cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)")
                     else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
             st.markdown("---")
-            with st.spinner("啟動爬蟲抓取中..."):
+            with st.spinner("啟爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)
                 render_dataframe(crawler_res, hide_index=True)
 

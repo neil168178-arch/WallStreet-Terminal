@@ -16,8 +16,11 @@ def render_portfolio_manager(is_etf_mode, fee_discount, save_callback):
     
     editor_key = "etf_editor_ui_key" if is_etf_mode else "stock_editor_ui_key"
 
+    # 🌟 魔鬼藏在細節裡：根據當前宇宙，給出最適合的提示代號！
+    hint_ticker = "0050.TW" if is_etf_mode else "2330.TW"
+
     col_cfg = {
-        "股票代號": st.column_config.TextColumn("標的代號 (例如: 2330.TW)"),
+        "股票代號": st.column_config.TextColumn(f"標的代號 (例如: {hint_ticker})"),
         "持股數量(股)": st.column_config.NumberColumn("持股數量(股)", min_value=0, step=1),
         "總投資成本(元)": st.column_config.NumberColumn("總投資成本(元)", min_value=0.0, step=10.0)
     }

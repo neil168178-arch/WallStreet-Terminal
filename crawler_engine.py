@@ -7,10 +7,7 @@ import requests
 
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
-    """雙引擎數據源：同時抓取「公司簡稱」與「所有證券(含ETF)」"""
     name_dict = {}
-    
-    # ================= 引擎 A：抓取一般上市櫃公司 (確保精準中文簡稱) =================
     try:
         res_twse = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", timeout=10)
         if res_twse.status_code == 200:
@@ -31,10 +28,8 @@ def load_tw_stock_names():
                     name_dict[f"{stock_id}.TWO"] = stock_name
                     name_dict[stock_name] = f"{stock_id}.TWO"
                     name_dict[stock_id] = f"{stock_id}.TWO"
-    except Exception as e:
-        print(f"引擎 A 獲取失敗: {e}")
+    except: pass
 
-    # ================= 引擎 B：抓取全市場證券 (涵蓋所有 ETF、ETN) =================
     try:
         res_all_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=10)
         if res_all_twse.status_code == 200:
@@ -42,7 +37,6 @@ def load_tw_stock_names():
                 stock_id = str(item.get("證券代號", "")).strip()
                 stock_name = str(item.get("證券名稱", "")).strip()
                 full_ticker = f"{stock_id}.TW"
-                # 如果字典裡還沒有，代表它是 ETF 或其他證券，把它加進去！
                 if full_ticker not in name_dict and len(stock_id) >= 4:
                     name_dict[full_ticker] = stock_name
                     name_dict[stock_name] = full_ticker
@@ -58,10 +52,8 @@ def load_tw_stock_names():
                     name_dict[full_ticker] = stock_name
                     name_dict[stock_name] = full_ticker
                     name_dict[stock_id] = full_ticker
-    except Exception as e:
-        print(f"引擎 B 獲取失敗: {e}")
+    except: pass
 
-    # ================= 備用安全電源 =================
     fallback = _get_fallback_stock_map()
     for k, v in fallback.items():
         if k not in name_dict:
@@ -82,32 +74,18 @@ def _get_fallback_stock_map():
     return res
 
 def resolve_ticker(input_str):
-    """強化的股票代號翻譯引擎"""
     if not input_str: return None
     input_str = input_str.strip()
-    
-    if re.match(r'^\d{4,6}[A-Z]?\.TW[O]?$', input_str.upper()):
-        return input_str.upper()
-        
+    if re.match(r'^\d{4,6}[A-Z]?\.TW[O]?$', input_str.upper()): return input_str.upper()
     stock_map = load_tw_stock_names()
-    
-    # 支援精準匹配
-    if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]):
-        return stock_map[input_str]
-        
-    # 支援模糊匹配 (例如輸入"美債"自動找出對應ETF)
+    if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]): return stock_map[input_str]
     for key, value in stock_map.items():
-        if "." in str(value) and (input_str in str(key)):
-            return value
-            
-    # 盲猜防呆 (支援含有英文字母的 ETF 代號如 00679B)
-    if re.match(r'^\d{4,6}[A-Za-z]?$', input_str):
-        return f"{input_str.upper()}.TW"
-        
+        if "." in str(value) and (input_str in str(key)): return value
+    if re.match(r'^\d{4,6}[A-Za-z]?$', input_str): return f"{input_str.upper()}.TW"
     return None
 
 def run_async_crawler(watchlist):
-    """多執行緒抓取基本面數據引擎"""
+    """🌟 強化防彈版：解決 Yahoo API N/A 問題"""
     if not watchlist: return pd.DataFrame()
     stock_names = load_tw_stock_names()
     data = []
@@ -115,24 +93,34 @@ def run_async_crawler(watchlist):
     def fetch_data(ticker):
         cn_name = stock_names.get(ticker, "N/A")
         try:
-            info = yf.Ticker(ticker).info
+            tk = yf.Ticker(ticker)
+            
+            # 🛡️ 防線 1: 直接去歷史 K 線抓最新價格 (最不容易壞)
+            hist = tk.history(period="1d")
+            price = round(hist['Close'].iloc[-1], 2) if not hist.empty else "N/A"
+            
+            # 🛡️ 防線 2: 嘗試抓取基本面 (用 try 包住，避免 yfinance 當機)
+            try:
+                info = tk.info
+                pe = info.get("trailingPE", "N/A")
+                dy = info.get("dividendYield")
+                dy_str = round(dy * 100, 2) if dy else "N/A"
+            except:
+                pe, dy_str = "N/A", "N/A"
+
             return {
                 "代號": ticker, "名稱": cn_name,
-                "股價": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
-                "本益比": info.get("trailingPE", "N/A"),
-                "殖利率(%)": round(info.get("dividendYield", 0) * 100, 2) if info.get("dividendYield") else "N/A"
+                "股價": price, "本益比": pe, "殖利率(%)": dy_str
             }
-        except:
+        except Exception as e:
             return {"代號": ticker, "名稱": cn_name, "股價": "N/A", "本益比": "N/A", "殖利率(%)": "N/A"}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    # 🌟 降低多線程數量 (從 10 降到 5)，避免瞬間送出太多請求被 Yahoo 封鎖
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for res in executor.map(fetch_data, watchlist):
             data.append(res)
             
     return pd.DataFrame(data)
 
-# 👇 剛剛就是漏了下面這三行！👇
 def run_market_screener(watchlist):
-    """市場掃描器"""
-    df = run_async_crawler(watchlist)
-    return df
+    return run_async_crawler(watchlist)

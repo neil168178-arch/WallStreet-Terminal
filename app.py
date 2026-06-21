@@ -275,7 +275,12 @@ def main_app():
     # ==========================================
     if "主控儀表板" in page:
         st.markdown(f"## 🏠 {sys_name} 專屬主控儀表板")
-        tab0, tab1, tab2 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺", "🏆 AI 量化選股評分"])
+        
+        # 🌟 核心修改：如果是 ETF 模式，只生出 2 個分頁（拿掉選股評分）；個股模式則維持 3 個分頁！
+        if is_etf_mode:
+            tab0, tab1 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺"])
+        else:
+            tab0, tab1, tab2 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺", "🏆 AI 量化選股評分"])
 
         with tab0:
             macro_df = fetch_macro_data()
@@ -284,11 +289,10 @@ def main_app():
         with tab1:
             render_portfolio_manager(is_etf_mode, fee_discount, save_portfolio)
 
-        with tab2:
-            st.markdown("### 🏆 觀察名單多因子量化評分")
-            if is_etf_mode:
-                st.warning("⚠️ **系統提示：** ETF 屬於「基金」性質，並無傳統財報之本益比與 EPS，因此不適用此評分模型。")
-            else:
+        # 🌟 只有在【個股模式】下，才渲染 AI 量化選股評分的分頁內容
+        if not is_etf_mode:
+            with tab2:
+                st.markdown("### 🏆 觀察名單多因子量化評分")
                 if st.button("⚡ 啟動量化評分引擎", type="primary"): 
                     with st.spinner("核心引擎正在幫全市場打分數..."):
                         ranking_result = run_multi_factor_ranking(active_watchlist)
@@ -321,7 +325,6 @@ def main_app():
             if is_etf_mode and not is_etf_ticker(target_stock): st.error("⚠️ 系統攔截：您搜尋的是『個股』，請先切換至【個股波段系統】！")
             elif not is_etf_mode and is_etf_ticker(target_stock): st.error("⚠️ 系統攔截：您搜尋的是『ETF』，請先切換至【ETF 存股系統】！")
             else:
-                # 🌟 核心進化：根據操作模式，動態切換獨立宇宙的功能分頁(Tabs)！
                 if is_etf_mode:
                     tabs = st.tabs(["⚡ 盤中心電圖", "📈 趨勢位階畫布", "🧱 存股策略回測", "🔮 長線淨值模擬", "📰 總經AI導讀", "📊 定期定額複利試算"])
                     tabA, tabB, tabC, tabD, tabF, tabH = tabs
@@ -339,7 +342,7 @@ def main_app():
                 
                 with tabC:
                     st.markdown(f"### 🤖 歷史回測大腦 ({target_stock})")
-                    strategy_dict = {'ma_cross': '1️⃣ 均線交叉', 'macd_cross': '2️⃣ MACD', 'rsi_reversion': '3️⃣ RSI 抄底', 'bb_breakout': '4️⃣ 布林通道', 'combined': '5️⃣ 多因子'}
+                    strategy_dict = {'ma_cross': '1️⃣ 均線', 'macd_cross': '2️⃣ MACD', 'rsi_reversion': '3️⃣ RSI 抄底', 'bb_breakout': '4️⃣ 布林通道', 'combined': '5️⃣ 多因子'}
                     inv_strategy_dict = {v: k for k, v in strategy_dict.items()}
                     selected_strategy_name = st.selectbox("🧠 選擇回測招式", list(inv_strategy_dict.keys()))
                     selected_strategy = inv_strategy_dict[selected_strategy_name]
@@ -415,7 +418,6 @@ def main_app():
                                     st.success(f"💡 **AI 懶人包：**\n{ai_result.get('summary', '')}")
                             else: st.warning("找不到新聞。")
                 
-                # 🌟 只有在【個股模式】下，才渲染 AI 猜漲跌分頁
                 if not is_etf_mode:
                     with tabG:
                         if st.button("🧠 AI 預測明天漲跌", type="primary"):
@@ -424,19 +426,16 @@ def main_app():
                                 prob_up, importance = run_ai_prediction(df_ai)
                                 if prob_up is not None: st.plotly_chart(plot_ml_prediction(prob_up, importance), use_container_width=True)
                 
-                # 🌟 資金與財富控制：根據模式執行完全不同的邏輯
                 with tabH:
                     if is_etf_mode:
-                        # 🚀 獨家升級：全新符合 ETF 存股調性的【定期定額複利模擬計算機】
                         st.markdown("### 📊 ETF 定期定額複利試算大腦")
                         st.caption("散戶變富豪的唯一秘密：時間 ＋ 複利滾雪球！")
                         
                         c1, c2, c3 = st.columns(3)
                         with c1: dca_amount = st.number_input("💵 每月預計投入金額 (元)", min_value=1000, value=10000, step=1000)
                         with c2: dca_years = st.number_input("⏳ 預計堅持投資年限 (年)", min_value=1, value=10, step=1)
-                        with c3: dca_rate = st.slider("📈 預期年化報酬率 (%)", 3.0, 15.0, 8.0, 0.5, help="台股大盤歷史長期平均約 8%~10%，高股息約 5%~7%")
+                        with c3: dca_rate = st.slider("📈 預期年化報酬率 (%)", 3.0, 15.0, 8.0, 0.5)
                         
-                        # 計算複利邏輯
                         months = dca_years * 12
                         r_monthly = (dca_rate / 100) / 12
                         
@@ -459,7 +458,6 @@ def main_app():
                         m2.metric(f"{dca_years} 年後預期總市值", f"${int(current_val):,}")
                         m3.metric("🧠 躺著賺到的複利利息", f"${int(current_val - current_principal):,}", f"資產放大 {(current_val/current_principal):.1f} 倍")
                         
-                        # 畫出極具科技感的財富增長曲線
                         fig_dca = go.Figure()
                         fig_dca.add_trace(go.Scatter(x=years_labels, y=principal_list, name="累積投入本金", line=dict(color="#FFA15A", width=2, dash='dash')))
                         fig_dca.add_trace(go.Scatter(x=years_labels, y=total_market_value_list, name="預期財富總市值", fill='tozeroy', fillcolor='rgba(25, 211, 243, 0.1)', line=dict(color="#19D3F3", width=3)))
@@ -470,7 +468,6 @@ def main_app():
                         )
                         st.plotly_chart(fig_dca, use_container_width=True)
                     else:
-                        # 🎯 個股模式：維持精準的 ATR 短線波段風控計算機
                         st.markdown(f"### 💰 資金控管建議")
                         df_pos = load_data(target_stock, period="3mo")
                         if df_pos is not None and not df_pos.empty and len(df_pos) > 15:

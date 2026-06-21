@@ -282,8 +282,13 @@ def main_app():
             tab0, tab1, tab2 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺", "🏆 AI 量化選股評分"])
 
         with tab0:
-            with st.expander("📖 白話文教學：為什麼要看總經？", expanded=False):
-                st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走；反之就會有大牛市！看懂大環境，才不會逆勢而為。")
+            if is_etf_mode:
+                with st.expander("📖 白話文教學：為什麼存 ETF 更要看總體經濟？", expanded=True):
+                    st.write("買個股看的是「公司財報」，買 ETF 看的則是「世界經濟」！\n\n1. **大盤 ETF (如 0050)**：代表全台灣，受全球景氣與 VIX 恐慌指數影響最大。\n2. **債券 ETF (如元大美債)**：完全不看財報！「美國 10 年期公債殖利率」與「美元/台幣匯率」就是決定你賺賠的唯一關鍵。看懂這四張圖，你的 ETF 佈局就贏過 90% 的人！")
+            else:
+                with st.expander("📖 白話文教學：為什麼波段操作要看總經大局？", expanded=False):
+                    st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走，這時候做多股票很容易賠錢；反之就會有大牛市！先看懂大環境是牛市還是熊市，才不會逆勢而為。")
+            
             macro_df = fetch_macro_data()
             if not macro_df.empty: st.plotly_chart(plot_macro_dashboard(macro_df), use_container_width=True)
 

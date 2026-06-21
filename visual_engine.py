@@ -110,29 +110,45 @@ def plot_advanced_chart(df, stock_id):
     up_color, down_color = '#FF4B4B', '#00CC96' 
 
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], increasing_line_color=up_color, decreasing_line_color=down_color, name='K線'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#FFA15A', width=1.5), name='5MA(周線)'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#19D3F3', width=1.5), name='20MA(月線)'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA5'], line=dict(color='#FFA15A', width=1.5), name='5MA'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#19D3F3', width=1.5), name='20MA'), row=1, col=1)
     
     vol_colors = [up_color if row['Close'] >= row['Open'] else down_color for idx, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=vol_colors, name='成交量'), row=2, col=1)
 
     fig.add_trace(go.Scatter(x=df.index, y=df['RSI_14'], line=dict(color='#AB63FA', width=1.5), name='RSI(14)'), row=3, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MACD_12_26_9'], line=dict(color='#19D3F3', width=1.5), name='MACD 快線'), row=4, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACDs_12_26_9'], line=dict(color='#FFA15A', width=1.5), name='MACD 慢線(Signal)'), row=4, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACDs_12_26_9'], line=dict(color='#FFA15A', width=1.5), name='MACD 慢線'), row=4, col=1)
 
     # 統一視覺風格設定
     fig.update_layout(
-        title=dict(text=f'{stock_id} 互動式技術分析大師', font=dict(size=22, color="#E0E0E0")),
+        # 🌟 修正 1：縮小標題字體並鎖定位置
+        title=dict(
+            text=f'{stock_id} 互動式技術分析大師', 
+            font=dict(size=18, color="#E0E0E0"),
+            y=0.97, 
+            x=0.02
+        ),
         height=850, 
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#E0E0E0'),
         xaxis_rangeslider_visible=False, 
-        margin=dict(l=50, r=50, b=50, t=50), 
+        # 🌟 修正 2：挑高天花板 (t=100) 並減少左右邊距 (l=15, r=15)，極大化畫布寬度！
+        margin=dict(l=15, r=15, b=50, t=100), 
         hovermode='x unified',
         hoverlabel=dict(bgcolor="#1E1E1E", font=dict(size=15, color="white")),
-        legend=dict(font=dict(size=14, color="white"))
+        
+        # 🌟 修正 3：神級排版！將圖例變成「水平排列 (orientation='h')」，並推到圖表最上方
+        legend=dict(
+            orientation="h",      # 水平排列
+            yanchor="bottom",     # 從底部對齊
+            y=1.02,               # 推到圖表上方
+            xanchor="right",      # 靠右對齊
+            x=1,
+            font=dict(size=12, color="white")
+        )
     )
     
     fig.update_xaxes(tickfont=dict(color='#E0E0E0'), gridcolor='rgba(255, 255, 255, 0.1)', rangebreaks=[dict(bounds=["sat", "mon"])])

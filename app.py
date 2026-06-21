@@ -311,15 +311,35 @@ def main_app():
                 st.plotly_chart(plot_macro_dashboard(macro_df), use_container_width=True)
 
         with tab1:
-            # 根據模式隔離顯示不同的投資組合
+            # 🛡️ 升級一：定義明確的表格欄位格式，防止新增時型態錯亂
+            col_cfg = {
+                "股票代號": st.column_config.TextColumn("代號 (必填)"),
+                "持股數量(股)": st.column_config.NumberColumn("持股數量(股)", min_value=1, step=1),
+                "總投資成本(元)": st.column_config.NumberColumn("總投資成本(元)", min_value=0.0, step=100.0)
+            }
+
+            # 🛡️ 升級二：根據模式隔離，並給予專屬的 Key (身分證)
             if is_etf_mode:
-                st.session_state.etf_portfolio = st.data_editor(st.session_state.etf_portfolio, num_rows="dynamic", use_container_width=True)
+                st.session_state.etf_portfolio = st.data_editor(
+                    st.session_state.etf_portfolio, 
+                    num_rows="dynamic", 
+                    use_container_width=True,
+                    column_config=col_cfg,
+                    key="etf_editor_key"  # 👈 ETF 專屬身分證
+                )
                 pnl_df = calculate_portfolio_pnl(st.session_state.etf_portfolio, fee_discount)
             else:
-                st.session_state.stock_portfolio = st.data_editor(st.session_state.stock_portfolio, num_rows="dynamic", use_container_width=True)
+                st.session_state.stock_portfolio = st.data_editor(
+                    st.session_state.stock_portfolio, 
+                    num_rows="dynamic", 
+                    use_container_width=True,
+                    column_config=col_cfg,
+                    key="stock_editor_key" # 👈 個股專屬身分證
+                )
                 pnl_df = calculate_portfolio_pnl(st.session_state.stock_portfolio, fee_discount)
 
-            if st.button("☁️ 儲存投資組合至雲端資料庫", use_container_width=True): save_portfolio()
+            if st.button("☁️ 儲存投資組合至雲端資料庫", use_container_width=True): 
+                save_portfolio()
 
             if st.button("🔄 結算最新市值與真實損益", type="primary"):
                 with st.spinner("連線交易所計算中..."):

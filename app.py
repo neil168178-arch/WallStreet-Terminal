@@ -276,23 +276,26 @@ def main_app():
     if "主控儀表板" in page:
         st.markdown(f"## 🏠 {sys_name} 專屬主控儀表板")
         
-        # 🌟 核心修改：如果是 ETF 模式，只生出 2 個分頁（拿掉選股評分）；個股模式則維持 3 個分頁！
         if is_etf_mode:
             tab0, tab1 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺"])
         else:
             tab0, tab1, tab2 = st.tabs(["🌐 總經大局觀", f"💼 我的 {sys_name} 存摺", "🏆 AI 量化選股評分"])
 
         with tab0:
+            with st.expander("📖 白話文教學：為什麼要看總經？", expanded=False):
+                st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走；反之就會有大牛市！看懂大環境，才不會逆勢而為。")
             macro_df = fetch_macro_data()
             if not macro_df.empty: st.plotly_chart(plot_macro_dashboard(macro_df), use_container_width=True)
 
         with tab1:
             render_portfolio_manager(is_etf_mode, fee_discount, save_portfolio)
 
-        # 🌟 只有在【個股模式】下，才渲染 AI 量化選股評分的分頁內容
         if not is_etf_mode:
             with tab2:
                 st.markdown("### 🏆 觀察名單多因子量化評分")
+                with st.expander("📖 白話文教學：這分數怎麼算的？", expanded=True):
+                    st.write("不知道手邊的名單該先買哪檔嗎？系統會用華爾街最紅的「多因子模型」幫標的打分 (滿分100)：\n\n1. **便宜度 (本益比)**：越便宜分數越高。\n2. **獲利力 (EPS)**：公司越會賺錢分數越高。\n3. **強勢度 (乖離率)**：最近趨勢越猛分數越高。\n\n⚠️ **【重要提示】** 這個分數是「排名機制(PR值)」，建議觀察名單至少放入 3 檔以上的股票，互相比較出來的分數才會精準喔！")
+                
                 if st.button("⚡ 啟動量化評分引擎", type="primary"): 
                     with st.spinner("核心引擎正在幫全市場打分數..."):
                         ranking_result = run_multi_factor_ranking(active_watchlist)
@@ -333,15 +336,21 @@ def main_app():
                     tabA, tabB, tabC, tabD, tabF, tabG, tabH = tabs
 
                 with tabA:
+                    with st.expander("📖 這是什麼圖？"): st.write("這是『分時閃電圖』，展示這檔標的在『今天盤中』每一分鐘的走勢，適合愛玩當沖或找漂亮買點的玩家看主力動向。")
                     df, name = fetch_intraday_data(target_stock)
                     if not df.empty: st.plotly_chart(plot_intraday_chart(df, target_stock, name), use_container_width=True)
                 
                 with tabB:
+                    with st.expander("📖 指標小教室 (看不懂圖看這裡)"): 
+                        st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家都在賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，就是常聽到的『黃金交叉』買點！")
                     df_tech = load_data(target_stock, period="1y") 
                     if not df_tech.empty: st.plotly_chart(plot_advanced_chart(add_indicators(df_tech), target_stock), use_container_width=True)
                 
                 with tabC:
                     st.markdown(f"### 🤖 歷史回測大腦 ({target_stock})")
+                    with st.expander("📖 什麼是回測？怎麼玩？", expanded=False):
+                        st.write("「回測」就是坐時光機回到兩年前，如果我們完全遵守某一種『買賣紀律』，現在會賺多少錢？\n這能幫你打破迷思，找出真正能賺錢的方法！")
+                    
                     strategy_dict = {'ma_cross': '1️⃣ 均線', 'macd_cross': '2️⃣ MACD', 'rsi_reversion': '3️⃣ RSI 抄底', 'bb_breakout': '4️⃣ 布林通道', 'combined': '5️⃣ 多因子'}
                     inv_strategy_dict = {v: k for k, v in strategy_dict.items()}
                     selected_strategy_name = st.selectbox("🧠 選擇回測招式", list(inv_strategy_dict.keys()))
@@ -397,8 +406,29 @@ def main_app():
                                 )
                                 st.success(f"🏆 最佳參數：短 {best_p[0]} / 長 {best_p[1]} (獲利: {best_roi:.1f}%)")
                                 if oos_m: st.plotly_chart(plot_equity_curve(oos_eq, title='📉 盲測期資金曲線'), use_container_width=True)
+                                
+                    st.markdown("---")
+                    st.markdown("### 🧪 電腦幫我找神級參數！(熱力圖)")
+                    with st.expander("📖 白話文教學：熱力圖怎麼看？"):
+                        st.write("不知道均線要設幾天？按下去，系統會直接測試 100 種組合！圖表上**紅色代表賠錢，綠色代表賺錢**。找出一大片都是綠色的區域，那就是最抗跌、最穩定的神級參數！")
+                    if st.button("🔥 一鍵暴力破解最佳參數", type="secondary", use_container_width=True):
+                        with st.spinner("正在瘋狂測試海量參數組合..."):
+                            df_opt = load_data(target_stock, period="2y")
+                            if not df_opt.empty:
+                                heatmap_data, best_row = run_parameter_grid_search(
+                                    df=df_opt, initial_capital=initial_cap, fee_discount=fee_discount, is_etf=is_etf_mode, 
+                                    strategy_type=selected_strategy, use_filter=use_filter, sl=stop_loss/100, tp=take_profit/100,
+                                    use_atr=use_atr, atr_sl_mult=atr_sl_mult, atr_tp_mult=atr_tp_mult, risk_pct=risk_pct_input, 
+                                    allow_short=allow_short, slippage_pct=slippage_pct
+                                )
+                                if heatmap_data is not None:
+                                    st.success(f"🏆 破解完成！最強參數組合為：**短 {int(best_row['Short_MA'])}MA / 長 {int(best_row['Long_MA'])}MA**，可創造 **{best_row['ROI']:.2f}%** 報酬率！")
+                                    st.plotly_chart(plot_optimization_heatmap(heatmap_data), use_container_width=True)
+
 
                 with tabD:
+                    with st.expander("📖 什麼是蒙地卡羅預測？"):
+                        st.write("就像奇異博士看未來一樣！電腦會用高等數學，模擬這檔標的未來 1000 種可能的走勢，然後告訴你：它一個月後上漲的機率到底大不大？")
                     if st.button("🔮 啟動平行宇宙模擬器", type="primary"):
                         df_pred = load_data(target_stock, period="1y")
                         if not df_pred.empty:
@@ -406,7 +436,10 @@ def main_app():
                             if sim_df is not None: st.plotly_chart(plot_monte_carlo_forecast(df_pred, sim_df, percent_df, f_dates, target_stock), use_container_width=True)
                 
                 with tabF:
-                    if not gemini_key_input: st.warning("⚠️ 必須先輸入 Gemini 鑰匙。")
+                    st.markdown(f"### 📰 新聞與情緒解析 ({target_stock})")
+                    with st.expander("📖 為什麼要讓 AI 讀新聞？"):
+                        st.write("新聞太多看不完？讓 Google 的 AI 機器人 1 秒內讀完 15 篇最新新聞，並直接幫你畫成情緒儀表板。指針偏向紅色代表市場正在恐慌，偏向藍綠色代表貪婪噴出！")
+                    if not gemini_key_input: st.warning("⚠️ 必須先在側欄輸入 Gemini 鑰匙。")
                     elif st.button("🧠 請 AI 幫我讀完最新新聞", type="primary", use_container_width=True):
                         with st.spinner("🤖 閱讀中..."):
                             news_df = fetch_stock_news(target_stock)
@@ -420,6 +453,8 @@ def main_app():
                 
                 if not is_etf_mode:
                     with tabG:
+                        with st.expander("📖 什麼是機器學習？"):
+                            st.write("AI 會像學生背考古題一樣，把這檔標的過去一年的技術指標全部背下來，然後預測明天它是漲還是跌！(純供參考，不代表一定會中)")
                         if st.button("🧠 AI 預測明天漲跌", type="primary"):
                             df_ai = load_data(target_stock, period="1y")
                             if not df_ai.empty:
@@ -429,7 +464,8 @@ def main_app():
                 with tabH:
                     if is_etf_mode:
                         st.markdown("### 📊 ETF 定期定額複利試算大腦")
-                        st.caption("散戶變富豪的唯一秘密：時間 ＋ 複利滾雪球！")
+                        with st.expander("📖 白話文教學：定期定額的威力", expanded=True):
+                            st.write("定期定額的精髓在於「微笑曲線」！當股市下跌時，你同樣的錢可以買到更多的股數，等股市回升，這些累積的低價部位就會爆發出驚人的利潤。設定好紀律，忘掉股價，時間就是散戶最強的武器。")
                         
                         c1, c2, c3 = st.columns(3)
                         with c1: dca_amount = st.number_input("💵 每月預計投入金額 (元)", min_value=1000, value=10000, step=1000)
@@ -469,6 +505,8 @@ def main_app():
                         st.plotly_chart(fig_dca, use_container_width=True)
                     else:
                         st.markdown(f"### 💰 資金控管建議")
+                        with st.expander("📖 為什麼這功能是散戶救星？", expanded=True):
+                            st.write("「全押」是散戶破產的主因！真正的贏家會先問：「這筆如果看錯，我最多只能賠多少？」\n這個計算機會看這檔標的近期的『脾氣（震盪幅度）』，幫你算出**最安全、就算停損也不會痛的買進張數**。")
                         df_pos = load_data(target_stock, period="3mo")
                         if df_pos is not None and not df_pos.empty and len(df_pos) > 15:
                             prev_close = df_pos['Close'].shift(1)
@@ -501,6 +539,8 @@ def main_app():
 
     elif "組合回測" in page:
         st.markdown(f"## 🌍 {sys_name} 組合大回測")
+        with st.expander("📖 這是做什麼的？", expanded=True):
+            st.write("前面的回測是一檔一檔測，這個引擎是**拿一筆總資金，讓系統自動在你的『觀察名單』裡到處尋找獵物買賣**！這最接近真實法人的量化基金操作方式。")
         if not active_watchlist:
             st.warning(f"⚠️ 名單是空的，請先新增！")
             return

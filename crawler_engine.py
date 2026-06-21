@@ -58,7 +58,6 @@ def load_tw_stock_names():
     for k, v in fallback.items():
         if k not in name_dict:
             name_dict[k] = v
-            
     return name_dict
 
 def _get_fallback_stock_map():
@@ -84,38 +83,74 @@ def resolve_ticker(input_str):
     if re.match(r'^\d{4,6}[A-Za-z]?$', input_str): return f"{input_str.upper()}.TW"
     return None
 
+# ==========================================
+# 🌟 獨家新增：直連台灣證券交易所官方財報庫
+# ==========================================
+@st.cache_data(ttl=3600)
+def load_twse_fundamentals():
+    """抓取證交所每日最新本益比與殖利率，徹底擺脫 Yahoo 限制"""
+    fund_dict = {}
+    try:
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            for item in res.json():
+                code = str(item.get("Code", "")).strip()
+                fund_dict[f"{code}.TW"] = {
+                    "PE": item.get("PEratio", "N/A"),
+                    "Yield": item.get("DividendYield", "N/A")
+                }
+    except Exception as e:
+        print(f"證交所基本面獲取失敗: {e}")
+    return fund_dict
+
 def run_async_crawler(watchlist):
-    """🌟 強化防彈版：解決 Yahoo API N/A 問題"""
+    """雙引擎爬蟲：先查證交所官方庫，再找 Yahoo 補漏"""
     if not watchlist: return pd.DataFrame()
     stock_names = load_tw_stock_names()
+    twse_funds = load_twse_fundamentals()  # 載入官方資料庫
     data = []
     
     def fetch_data(ticker):
         cn_name = stock_names.get(ticker, "N/A")
+        price = "N/A"
+        pe = "N/A"
+        dy_str = "N/A"
+        
+        # 1. 抓取最新股價 (使用最不會壞的 history 函數)
         try:
             tk = yf.Ticker(ticker)
-            
-            # 🛡️ 防線 1: 直接去歷史 K 線抓最新價格 (最不容易壞)
             hist = tk.history(period="1d")
-            price = round(hist['Close'].iloc[-1], 2) if not hist.empty else "N/A"
-            
-            # 🛡️ 防線 2: 嘗試抓取基本面 (用 try 包住，避免 yfinance 當機)
+            if not hist.empty:
+                price = round(hist['Close'].iloc[-1], 2)
+        except:
+            pass
+
+        # 2. 優先向「台灣證交所官方庫」調閱本益比與殖利率
+        if ticker in twse_funds:
+            tw_pe = twse_funds[ticker].get("PE", "N/A")
+            tw_dy = twse_funds[ticker].get("Yield", "N/A")
+            # 濾掉虧損公司或未配息公司回傳的 "-" 符號
+            pe = tw_pe if tw_pe not in ["", "-", "0.00"] else "N/A"
+            dy_str = tw_dy if tw_dy not in ["", "-", "0.00"] else "N/A"
+        
+        # 3. 如果官方庫沒有 (例如上櫃股票)，再嘗試去 Yahoo 碰運氣
+        if pe == "N/A" or dy_str == "N/A":
             try:
                 info = tk.info
-                pe = info.get("trailingPE", "N/A")
-                dy = info.get("dividendYield")
-                dy_str = round(dy * 100, 2) if dy else "N/A"
+                if pe == "N/A": 
+                    pe = info.get("trailingPE", "N/A")
+                if dy_str == "N/A": 
+                    dy = info.get("dividendYield")
+                    dy_str = round(dy * 100, 2) if dy else "N/A"
             except:
-                pe, dy_str = "N/A", "N/A"
+                pass
 
-            return {
-                "代號": ticker, "名稱": cn_name,
-                "股價": price, "本益比": pe, "殖利率(%)": dy_str
-            }
-        except Exception as e:
-            return {"代號": ticker, "名稱": cn_name, "股價": "N/A", "本益比": "N/A", "殖利率(%)": "N/A"}
+        return {
+            "代號": ticker, "名稱": cn_name,
+            "股價": price, "本益比": pe, "殖利率(%)": dy_str
+        }
 
-    # 🌟 降低多線程數量 (從 10 降到 5)，避免瞬間送出太多請求被 Yahoo 封鎖
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for res in executor.map(fetch_data, watchlist):
             data.append(res)

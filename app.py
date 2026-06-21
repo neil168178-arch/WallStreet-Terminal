@@ -117,7 +117,7 @@ def save_portfolio():
         st.error(f"☁️ 投資組合同步失敗：{e}")
 
 # ==========================================
-# 匯入所有核心運算引擎 (🌟 包含我們剛剛新建的 portfolio_ui)
+# 匯入所有核心運算引擎 
 # ==========================================
 from data_engine import load_data
 from strategy_engine import add_indicators
@@ -127,7 +127,7 @@ from macro_engine import fetch_macro_data, plot_macro_dashboard
 from ranking_engine import run_multi_factor_ranking 
 from intraday_engine import fetch_intraday_data, plot_intraday_chart
 from portfolio_engine import calculate_portfolio_pnl
-from portfolio_ui import render_portfolio_manager  # 👈 新加入的獨立存摺 UI
+from portfolio_ui import render_portfolio_manager 
 from predict_engine import run_monte_carlo_simulation, plot_monte_carlo_forecast
 from ai_engine import run_ai_prediction, plot_ml_prediction
 from news_engine import fetch_stock_news, analyze_news_sentiment, plot_sentiment_gauge
@@ -282,7 +282,6 @@ def main_app():
             if not macro_df.empty: st.plotly_chart(plot_macro_dashboard(macro_df), use_container_width=True)
 
         with tab1:
-            # 🌟 靈魂呼叫：將剛剛獨立出來的 UI 模組直接掛載進來！
             render_portfolio_manager(is_etf_mode, fee_discount, save_portfolio)
 
         with tab2:
@@ -322,20 +321,27 @@ def main_app():
             if is_etf_mode and not is_etf_ticker(target_stock): st.error("⚠️ 系統攔截：您搜尋的是『個股』，請先切換至【個股波段系統】！")
             elif not is_etf_mode and is_etf_ticker(target_stock): st.error("⚠️ 系統攔截：您搜尋的是『ETF』，請先切換至【ETF 存股系統】！")
             else:
-                tabA, tabB, tabC, tabD, tabF, tabG, tabH = st.tabs([
-                    "⚡ 盤中心電圖", "📈 技術看盤畫布", "⏳ 時光機回測", "🔮 未來預測", 
-                    "📰 AI 讀新聞", "🤖 AI 猜漲跌", "💰 該買幾張？"
-                ])
+                # 🌟 核心進化：根據操作模式，動態切換獨立宇宙的功能分頁(Tabs)！
+                if is_etf_mode:
+                    tabs = st.tabs(["⚡ 盤中心電圖", "📈 趨勢位階畫布", "🧱 存股策略回測", "🔮 長線淨值模擬", "📰 總經AI導讀", "📊 定期定額複利試算"])
+                    tabA, tabB, tabC, tabD, tabF, tabH = tabs
+                else:
+                    tabs = st.tabs(["⚡ 盤中心電圖", "📈 技術看盤畫布", "⏳ 時光機策略回測", "🔮 平行宇宙預測", "📰 AI 新聞解析", "🤖 AI 猜漲跌", "💰 獵人資金控管"])
+                    tabA, tabB, tabC, tabD, tabF, tabG, tabH = tabs
+
                 with tabA:
                     df, name = fetch_intraday_data(target_stock)
                     if not df.empty: st.plotly_chart(plot_intraday_chart(df, target_stock, name), use_container_width=True)
+                
                 with tabB:
                     df_tech = load_data(target_stock, period="1y") 
                     if not df_tech.empty: st.plotly_chart(plot_advanced_chart(add_indicators(df_tech), target_stock), use_container_width=True)
+                
                 with tabC:
-                    strategy_dict = {'ma_cross': '1️⃣ 均線', 'macd_cross': '2️⃣ MACD', 'rsi_reversion': '3️⃣ RSI', 'bb_breakout': '4️⃣ 布林通道', 'combined': '5️⃣ 多因子'}
+                    st.markdown(f"### 🤖 歷史回測大腦 ({target_stock})")
+                    strategy_dict = {'ma_cross': '1️⃣ 均線交叉', 'macd_cross': '2️⃣ MACD', 'rsi_reversion': '3️⃣ RSI 抄底', 'bb_breakout': '4️⃣ 布林通道', 'combined': '5️⃣ 多因子'}
                     inv_strategy_dict = {v: k for k, v in strategy_dict.items()}
-                    selected_strategy_name = st.selectbox("🧠 選擇招式", list(inv_strategy_dict.keys()))
+                    selected_strategy_name = st.selectbox("🧠 選擇回測招式", list(inv_strategy_dict.keys()))
                     selected_strategy = inv_strategy_dict[selected_strategy_name]
 
                     c1, c2, c3, c4 = st.columns(4)
@@ -409,42 +415,92 @@ def main_app():
                                     st.success(f"💡 **AI 懶人包：**\n{ai_result.get('summary', '')}")
                             else: st.warning("找不到新聞。")
                 
-                with tabG:
-                    if st.button("🧠 AI 預測明天漲跌", type="primary"):
-                        df_ai = load_data(target_stock, period="1y")
-                        if not df_ai.empty:
-                            prob_up, importance = run_ai_prediction(df_ai)
-                            if prob_up is not None: st.plotly_chart(plot_ml_prediction(prob_up, importance), use_container_width=True)
+                # 🌟 只有在【個股模式】下，才渲染 AI 猜漲跌分頁
+                if not is_etf_mode:
+                    with tabG:
+                        if st.button("🧠 AI 預測明天漲跌", type="primary"):
+                            df_ai = load_data(target_stock, period="1y")
+                            if not df_ai.empty:
+                                prob_up, importance = run_ai_prediction(df_ai)
+                                if prob_up is not None: st.plotly_chart(plot_ml_prediction(prob_up, importance), use_container_width=True)
                 
+                # 🌟 資金與財富控制：根據模式執行完全不同的邏輯
                 with tabH:
-                    df_pos = load_data(target_stock, period="3mo")
-                    if df_pos is not None and not df_pos.empty and len(df_pos) > 15:
-                        prev_close = df_pos['Close'].shift(1)
-                        tr = pd.concat([df_pos['High'] - df_pos['Low'], (df_pos['High'] - prev_close).abs(), (df_pos['Low'] - prev_close).abs()], axis=1).max(axis=1)
-                        atr_14 = tr.rolling(window=14).mean().iloc[-1]
-                        latest_close = df_pos['Close'].iloc[-1]
-
+                    if is_etf_mode:
+                        # 🚀 獨家升級：全新符合 ETF 存股調性的【定期定額複利模擬計算機】
+                        st.markdown("### 📊 ETF 定期定額複利試算大腦")
+                        st.caption("散戶變富豪的唯一秘密：時間 ＋ 複利滾雪球！")
+                        
                         c1, c2, c3 = st.columns(3)
-                        with c1: user_capital = st.number_input("💵 預計投資金額", min_value=10000, value=500000, step=50000)
-                        with c2: risk_tolerance = st.slider("⚠️ 最大虧損 %", 0.5, 5.0, 2.0, 0.5)
-                        with c3: atr_multiplier = st.slider("📏 停損寬度 (x ATR)", 1.0, 5.0, 2.0, 0.5)
+                        with c1: dca_amount = st.number_input("💵 每月預計投入金額 (元)", min_value=1000, value=10000, step=1000)
+                        with c2: dca_years = st.number_input("⏳ 預計堅持投資年限 (年)", min_value=1, value=10, step=1)
+                        with c3: dca_rate = st.slider("📈 預期年化報酬率 (%)", 3.0, 15.0, 8.0, 0.5, help="台股大盤歷史長期平均約 8%~10%，高股息約 5%~7%")
+                        
+                        # 計算複利邏輯
+                        months = dca_years * 12
+                        r_monthly = (dca_rate / 100) / 12
+                        
+                        principal_list = []
+                        total_market_value_list = []
+                        years_labels = [f"第 {y} 年" for y in range(1, dca_years + 1)]
+                        
+                        current_val = 0
+                        current_principal = 0
+                        for y in range(1, dca_years + 1):
+                            for m in range(12):
+                                current_principal += dca_amount
+                                current_val = (current_val + dca_amount) * (1 + r_monthly)
+                            principal_list.append(current_principal)
+                            total_market_value_list.append(current_val)
+                            
+                        st.markdown("---")
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("您的總投入本金", f"${int(current_principal):,}")
+                        m2.metric(f"{dca_years} 年後預期總市值", f"${int(current_val):,}")
+                        m3.metric("🧠 躺著賺到的複利利息", f"${int(current_val - current_principal):,}", f"資產放大 {(current_val/current_principal):.1f} 倍")
+                        
+                        # 畫出極具科技感的財富增長曲線
+                        fig_dca = go.Figure()
+                        fig_dca.add_trace(go.Scatter(x=years_labels, y=principal_list, name="累積投入本金", line=dict(color="#FFA15A", width=2, dash='dash')))
+                        fig_dca.add_trace(go.Scatter(x=years_labels, y=total_market_value_list, name="預期財富總市值", fill='tozeroy', fillcolor='rgba(25, 211, 243, 0.1)', line=dict(color="#19D3F3", width=3)))
+                        fig_dca.update_layout(
+                            title="📈 財富自由複利滾雪球曲線", template='plotly_dark',
+                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                            font=dict(color='#E0E0E0'), hovermode='x unified'
+                        )
+                        st.plotly_chart(fig_dca, use_container_width=True)
+                    else:
+                        # 🎯 個股模式：維持精準的 ATR 短線波段風控計算機
+                        st.markdown(f"### 💰 資金控管建議")
+                        df_pos = load_data(target_stock, period="3mo")
+                        if df_pos is not None and not df_pos.empty and len(df_pos) > 15:
+                            prev_close = df_pos['Close'].shift(1)
+                            tr = pd.concat([df_pos['High'] - df_pos['Low'], (df_pos['High'] - prev_close).abs(), (df_pos['Low'] - prev_close).abs()], axis=1).max(axis=1)
+                            atr_14 = tr.rolling(window=14).mean().iloc[-1]
+                            latest_close = df_pos['Close'].iloc[-1]
 
-                        max_loss_amount = user_capital * (risk_tolerance / 100.0)
-                        stop_loss_dist = atr_14 * atr_multiplier
-                        stop_loss_price = latest_close - stop_loss_dist
+                            c1, c2, c3 = st.columns(3)
+                            with c1: user_capital = st.number_input("💵 預計投資金額", min_value=10000, value=500000, step=50000)
+                            with c2: risk_tolerance = st.slider("⚠️ 最大虧損 %", 0.5, 5.0, 2.0, 0.5)
+                            with c3: atr_multiplier = st.slider("📏 停損寬度 (x ATR)", 1.0, 5.0, 2.0, 0.5)
 
-                        if stop_loss_dist > 0:
-                            recommended_shares = int(max_loss_amount / stop_loss_dist)
-                            actual_invest_amount = recommended_shares * latest_close
-                            if actual_invest_amount > user_capital:
-                                recommended_shares = int(user_capital / latest_close)
+                            max_loss_amount = user_capital * (risk_tolerance / 100.0)
+                            stop_loss_dist = atr_14 * atr_multiplier
+                            stop_loss_price = latest_close - stop_loss_dist
+
+                            if stop_loss_dist > 0:
+                                recommended_shares = int(max_loss_amount / stop_loss_dist)
                                 actual_invest_amount = recommended_shares * latest_close
+                                if actual_invest_amount > user_capital:
+                                    recommended_shares = int(user_capital / latest_close)
+                                    actual_invest_amount = recommended_shares * latest_close
 
-                            m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("目前價格", f"${latest_close:.2f}")
-                            m2.metric("逃命價位", f"${stop_loss_price:.2f}")
-                            m3.metric("建議買進", f"{recommended_shares:,} 股")
-                            m4.metric("需花資金", f"${actual_invest_amount:,.0f}")
+                                m1, m2, m3, m4 = st.columns(4)
+                                m1.metric("目前價格", f"${latest_close:.2f}")
+                                m2.metric("逃命價位", f"${stop_loss_price:.2f}")
+                                m3.metric("建議買進", f"{recommended_shares:,} 股")
+                                m4.metric("需花資金", f"${actual_invest_amount:,.0f}")
+                                st.success(f"> **💡 戰略分析：** 如果買進 **{recommended_shares:,} 股**，就算崩盤觸發逃命價，你也只會損失大約 **${int(max_loss_amount):,}**，完美控制在 **{risk_tolerance}%** 的風險內！")
 
     elif "組合回測" in page:
         st.markdown(f"## 🌍 {sys_name} 組合大回測")

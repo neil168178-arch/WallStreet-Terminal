@@ -130,3 +130,9 @@ def run_async_crawler(watchlist):
             data.append(res)
             
     return pd.DataFrame(data)
+
+# 👇 剛剛就是漏了下面這三行！👇
+def run_market_screener(watchlist):
+    """市場掃描器"""
+    df = run_async_crawler(watchlist)
+    return df

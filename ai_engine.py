@@ -1,7 +1,6 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from strategy_engine import add_indicators
 
 def run_ai_prediction(df):
@@ -45,15 +44,15 @@ def run_ai_prediction(df):
     return prob_up, importance
 
 def plot_ml_prediction(prob_up, importance):
-    """繪製機器學習預測儀表板與特徵權重圖"""
-    # 建立左右兩欄的圖表 (左邊是指針，右邊是長條圖)
-    fig = make_subplots(rows=1, cols=2, specs=[[{"type": "indicator"}, {"type": "bar"}]], column_widths=[0.4, 0.6])
+    """繪製機器學習預測儀表板與特徵權重圖 (已拆分為兩張獨立圖表以支援手機 RWD)"""
     
     # 決定顏色 (大於 50% 偏多用綠色，小於 50% 偏空用紅色)
     bar_color = "#00CC96" if prob_up >= 50 else "#FF4B4B"
     
-    # 1. 畫左邊的機率儀表板
-    fig.add_trace(go.Indicator(
+    # ==========================================
+    # 📊 第一張圖：AI 勝率儀表板 (fig1)
+    # ==========================================
+    fig1 = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = prob_up,
         title = {'text': "明日上漲機率", 'font': {'size': 20, 'color': '#E0E0E0'}},
@@ -69,26 +68,37 @@ def plot_ml_prediction(prob_up, importance):
                 {'range': [50, 100], 'color': "rgba(0, 204, 150, 0.15)"}
             ]
         }
-    ), row=1, col=1)
+    ))
     
-    # 2. 畫右邊的特徵權重橫向長條圖
-    fig.add_trace(go.Bar(
+    fig1.update_layout(
+        title=dict(text='🤖 AI 預測結果', font=dict(size=22, color="#E0E0E0")),
+        height=350, template='plotly_dark',
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#E0E0E0'),
+        margin=dict(l=30, r=30, t=60, b=30)
+    )
+    
+    # ==========================================
+    # 📊 第二張圖：特徵權重長條圖 (fig2)
+    # ==========================================
+    fig2 = go.Figure(go.Bar(
         x=importance.values,
         y=importance.index,
         orientation='h',
         marker_color='#19D3F3',
         name="決策權重"
-    ), row=1, col=2)
+    ))
     
-    fig.update_layout(
-        title=dict(text='🤖 隨機森林模型分析報告', font=dict(size=22, color="#E0E0E0")),
-        height=400, template='plotly_dark',
+    fig2.update_layout(
+        title=dict(text='🧠 AI 決策關鍵指標權重', font=dict(size=18, color="#E0E0E0")),
+        height=350, template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#E0E0E0'),
         showlegend=False,
-        margin=dict(l=50, r=50, t=60, b=50)
+        margin=dict(l=30, r=30, t=60, b=30),
+        xaxis=dict(title="影響力佔比", gridcolor='rgba(255, 255, 255, 0.1)'),
+        yaxis=dict(gridcolor='rgba(255, 255, 255, 0.1)')
     )
-    fig.update_xaxes(title_text="指標重要性 (Importance)", row=1, col=2, gridcolor='rgba(255, 255, 255, 0.1)')
-    fig.update_yaxes(gridcolor='rgba(255, 255, 255, 0.1)')
     
-    return fig
+    # 🌟 終極大決招：不再只回傳一個，而是把兩張圖一起打包傳出去！
+    return fig1, fig2

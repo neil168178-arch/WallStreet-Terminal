@@ -42,18 +42,22 @@ def calculate_scanner_indicators(df):
     return df
 
 def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
-    """👑 V2.0 旗艦版：千人千面多因子分類掃描引擎"""
-    # 👇👇👇 竊聽器安裝在這裡！ 👇👇👇
-    print("🚨🚨🚨 報告總部：我現在正在執行 V2.0 旗艦版程式碼！！！ 🚨🚨🚨")
+    """👑 V2.1 旗艦版：新增【異常標的防呆回報】機制"""
+    # 👇👇👇 竊聽器升級！ 👇👇👇
+    print("🚨🚨🚨 報告總部：我現在正在執行 V2.1 旗艦版程式碼 (包含異常回報)！！！ 🚨🚨🚨")
     
     if not watchlist: 
         return False, "⚠️ 觀察名單是空的，系統無股票可掃描。"
         
     bullish_list, bearish_list, neutral_list = [], [], []
+    error_list = [] # 🌟 新增：專門用來裝找不到資料或太新的 ETF / 股票
     
     for tk in watchlist:
         df = load_data(tk, period="6mo")
+        
+        # 🌟 攔截點：如果抓不到資料，或者上市不到 60 天，把他抓進 error_list
         if df is None or len(df) < 60: 
+            error_list.append(tk)
             continue
             
         df = calculate_scanner_indicators(df)
@@ -87,6 +91,10 @@ def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
         for item in bearish_list: msg_lines.extend([f"🏷️ <b>{item['tk']}</b>", f"💵 最新股價：${item['price']:.2f}", f"📉 觸發條件：{item['reason']}\n"])
     if neutral_list:
         msg_lines.extend(["⚪ <b>【其餘觀望標的】</b>", f"目前無特殊訊號：{', '.join(neutral_list)}\n"])
+        
+    # 🌟 貼心回報：把有問題的股票印在推播最下方
+    if error_list:
+        msg_lines.extend(["⚠️ <b>【資料不足 / 異常標的】</b>", f"因上市未滿60天或代號無效，略過掃描：{', '.join(error_list)}\n"])
         
     msg_lines.extend(["===========================", "💡 <i>系統溫馨提醒：量化訊號僅供參考，請嚴格設定單筆風險與資金控管！</i>"])
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))

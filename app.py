@@ -373,7 +373,7 @@ def main_app():
                 
                 with tabB:
                     with st.expander("📖 指標小教室 (看不懂圖看這裡)"): 
-                        st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家都在賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，就是常聽到的『黃金交叉』買點！")
+                        st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，就是常聽到的『黃金交叉』買點！")
                     df_tech = load_data(target_stock, period="1y") 
                     # 🌟 套用手機防護
                     if not df_tech.empty: st.plotly_chart(plot_advanced_chart(add_indicators(df_tech), target_stock), use_container_width=True, config=mobile_config)
@@ -501,8 +501,19 @@ def main_app():
                             df_ai = load_data(target_stock, period="1y")
                             if not df_ai.empty:
                                 prob_up, importance = run_ai_prediction(df_ai)
-                                # 🌟 套用手機防護
-                                if prob_up is not None: st.plotly_chart(plot_ml_prediction(prob_up, importance), use_container_width=True, config=mobile_config)
+                                if prob_up is not None:
+                                    # 🌟【重點升級區塊】：判斷是不是兩張獨立圖表，如果是，就啟動 Streamlit 列排版魔法！
+                                    ai_charts = plot_ml_prediction(prob_up, importance)
+                                    if isinstance(ai_charts, tuple) and len(ai_charts) == 2:
+                                        # 👉 電腦上自動分為左(col_ai1)右(col_ai2)並排，手機上自動變為上下垂直排列！
+                                        col_ai1, col_ai2 = st.columns(2)
+                                        with col_ai1: 
+                                            st.plotly_chart(ai_charts[0], use_container_width=True, config=mobile_config)
+                                        with col_ai2: 
+                                            st.plotly_chart(ai_charts[1], use_container_width=True, config=mobile_config)
+                                    else:
+                                        # 相容舊版寫法（如果還是合在一起的一張大圖）
+                                        st.plotly_chart(ai_charts, use_container_width=True, config=mobile_config)
                 
                 with tabH:
                     if is_etf_mode:

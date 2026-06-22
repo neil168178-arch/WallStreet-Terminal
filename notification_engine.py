@@ -43,6 +43,9 @@ def calculate_scanner_indicators(df):
 
 def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
     """👑 V2.0 旗艦版：千人千面多因子分類掃描引擎"""
+    # 👇👇👇 竊聽器安裝在這裡！ 👇👇👇
+    print("🚨🚨🚨 報告總部：我現在正在執行 V2.0 旗艦版程式碼！！！ 🚨🚨🚨")
+    
     if not watchlist: 
         return False, "⚠️ 觀察名單是空的，系統無股票可掃描。"
         

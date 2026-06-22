@@ -3,12 +3,6 @@ import pandas as pd
 from supabase import create_client, Client
 from notification_engine import run_daily_signal_scanner
 
-def is_etf_ticker(ticker):
-    if not ticker: return False
-    tk = ticker.split('.')[0]
-    if tk.startswith('00') or not tk.isdigit(): return True
-    return False
-
 def main():
     print("🤖 [SaaS 中央伺服器] 啟動全站用戶雷達巡邏...")
 
@@ -49,18 +43,16 @@ def main():
         res_watch = sb.table("watchlists").select("ticker").eq("user_id", user_id).execute()
         user_tickers = [row['ticker'] for row in res_watch.data]
         
-        # 過濾出股票 (ETF 通常不適用短線雷達)
-        stock_watchlist = [t for t in user_tickers if not is_etf_ticker(t)]
-
-        if not stock_watchlist:
-            print(f"⚠️ 該用戶沒有股票觀察名單，略過。")
+        # 🔓 【核心修改】：霸氣解鎖！不再過濾 ETF，直接掃描用戶清單上的所有標的！
+        if not user_tickers:
+            print(f"⚠️ 該用戶沒有觀察名單，略過。")
             continue
 
-        print(f"🔍 掃描名單：{stock_watchlist}")
+        print(f"🔍 掃描名單：{user_tickers}")
         
         # 啟動運算引擎，並把結果直接發送到「該用戶」的 Telegram
         # 預設使用最強的 'combined' (多因子濾網) 策略進行全盤掃描
-        success, msg = run_daily_signal_scanner(stock_watchlist, 'combined', tg_token, tg_chat_id)
+        success, msg = run_daily_signal_scanner(user_tickers, 'combined', tg_token, tg_chat_id)
         
         if success:
             print(f"✅ 已成功推播給該用戶！")

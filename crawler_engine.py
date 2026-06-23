@@ -18,8 +18,11 @@ STOCK_MAPPING = {
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     name_dict = {}
+    # 🛡️ 第一重防護：偽裝成真人瀏覽器，避免被政府開放資料庫阻擋
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"}
+    
     try:
-        res_twse = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", timeout=10)
+        res_twse = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=15)
         if res_twse.status_code == 200:
             for item in res_twse.json():
                 stock_id = str(item.get("公司代號", "")).strip()
@@ -29,7 +32,7 @@ def load_tw_stock_names():
                     name_dict[stock_name] = f"{stock_id}.TW"
                     name_dict[stock_id] = f"{stock_id}.TW"
                     
-        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", timeout=10)
+        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", headers=headers, timeout=15)
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
                 stock_id = str(item.get("公司代號", "")).strip()
@@ -41,7 +44,7 @@ def load_tw_stock_names():
     except: pass
 
     try:
-        res_all_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=10)
+        res_all_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=15)
         if res_all_twse.status_code == 200:
             for item in res_all_twse.json():
                 stock_id = str(item.get("證券代號", "")).strip()
@@ -52,7 +55,7 @@ def load_tw_stock_names():
                     name_dict[stock_name] = full_ticker
                     name_dict[stock_id] = full_ticker
                     
-        res_all_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/t13stk04", timeout=10)
+        res_all_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/t13stk04", headers=headers, timeout=15)
         if res_all_tpex.status_code == 200:
             for item in res_all_tpex.json():
                 stock_id = str(item.get("SecuritiesCompanyCode", "")).strip()
@@ -87,16 +90,13 @@ def resolve_ticker(user_input):
     if not user_input: return None
     user_input = str(user_input).strip().upper()
     
-    # 1. 字典反查：如果使用者輸入中文，直接從字典找
     for name, ticker in STOCK_MAPPING.items():
         if user_input == name or user_input in name:
             return ticker
             
-    # 2. 完美輸入：如果使用者已經乖乖輸入 .TW 或 .TWO，直接放行
     if user_input.endswith(".TW") or user_input.endswith(".TWO"):
         return user_input
         
-    # 從政府開放資料快取名單找尋精確配對
     stock_map = load_tw_stock_names()
     if user_input in stock_map and isinstance(stock_map[user_input], str) and ("." in stock_map[user_input]):
         return stock_map[user_input]
@@ -105,37 +105,31 @@ def resolve_ticker(user_input):
         if "." in str(value) and (user_input in str(key)):
             return value
 
-    # 3. 🎯 核心黑科技：自動偵測上市或上櫃！
-    # 如果使用者只輸入純數字 (例如 6223 或 2330) 或是 ETF (如 00929)
     if user_input.isdigit() or (user_input[:-1].isdigit() and user_input[-1].isalpha()):
-        # 測試 A：去敲「上市」的門 (.TW)
         tw_ticker = f"{user_input}.TW"
         df_tw = yf.download(tw_ticker, period="1d", progress=False)
         if not df_tw.empty:
-            return tw_ticker # 找到了！是上市股
+            return tw_ticker 
             
-        # 測試 B：去敲「上櫃」的門 (.TWO)
         two_ticker = f"{user_input}.TWO"
         df_two = yf.download(two_ticker, period="1d", progress=False)
         if not df_two.empty:
-            return two_ticker # 找到了！是上櫃股
+            return two_ticker 
             
-    return None # 真的找不到這檔股票
+    return None 
 
-# ==========================================
-# 🌟 獨家新增：直連台灣證券交易所官方財報庫
-# ==========================================
 @st.cache_data(ttl=3600)
 def load_twse_fundamentals():
-    """抓取證交所每日最新本益比與殖利率，徹底擺脫 Yahoo 限制"""
     fund_dict = {}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
             for item in res.json():
                 code = str(item.get("Code", "")).strip()
                 fund_dict[f"{code}.TW"] = {
+                    "Name": item.get("Name", ""),
                     "PE": item.get("PEratio", "N/A"),
                     "Yield": item.get("DividendYield", "N/A")
                 }
@@ -147,7 +141,7 @@ def run_async_crawler(watchlist):
     """雙引擎爬蟲：先查證交所官方庫，再找 Yahoo 補漏"""
     if not watchlist: return pd.DataFrame()
     stock_names = load_tw_stock_names()
-    twse_funds = load_twse_fundamentals()  # 載入官方資料庫
+    twse_funds = load_twse_fundamentals()  
     data = []
     
     def fetch_data(ticker):
@@ -156,24 +150,32 @@ def run_async_crawler(watchlist):
         pe = "N/A"
         dy_str = "N/A"
         
-        # 1. 抓取最新股價 (使用最不會壞的 history 函數)
         try:
             tk = yf.Ticker(ticker)
             hist = tk.history(period="1d")
             if not hist.empty:
                 price = round(hist['Close'].iloc[-1], 2)
+                
+            # 🛡️ 第二重防護：如果字典沒名字，強迫叫 Yahoo 交出名字
+            if cn_name == "N/A" or cn_name == "":
+                info = tk.info
+                # 🛡️ 第三重防護：最慘的情況，至少顯示代號 (ticker)
+                cn_name = info.get("shortName", ticker) 
         except:
             pass
 
-        # 2. 優先向「台灣證交所官方庫」調閱本益比與殖利率
         if ticker in twse_funds:
             tw_pe = twse_funds[ticker].get("PE", "N/A")
             tw_dy = twse_funds[ticker].get("Yield", "N/A")
-            # 濾掉虧損公司或未配息公司回傳的 "-" 符號
+            tw_name = twse_funds[ticker].get("Name", "")
+            
+            # 證交所有名字的話，以官方為準
+            if (cn_name == "N/A" or cn_name == ticker) and tw_name:
+                cn_name = tw_name
+
             pe = tw_pe if tw_pe not in ["", "-", "0.00"] else "N/A"
             dy_str = tw_dy if tw_dy not in ["", "-", "0.00"] else "N/A"
         
-        # 3. 如果官方庫沒有 (例如上櫃股票)，再嘗試去 Yahoo 碰運氣
         if pe == "N/A" or dy_str == "N/A":
             try:
                 info = tk.info

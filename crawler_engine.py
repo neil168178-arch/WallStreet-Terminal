@@ -4,46 +4,57 @@ import re
 import streamlit as st
 import concurrent.futures
 import requests
+from supabase import create_client
 
-# 🌟 內建急救小字典：就算政府網站當機，這些熱門股也絕對不會變成英文
-STOCK_MAPPING = {
-    "台積電": "2330.TW", "聯發科": "2454.TW", "鴻海": "2317.TW", "旺矽": "6223.TWO",
-    "元大台灣50": "0050.TW", "國泰永續高股息": "00878.TW", "復華台灣科技優息": "00929.TW",
-    "群創": "3481.TW", "長榮": "2603.TW", "陽明": "2609.TW", "萬海": "2615.TW",
-    "富邦金": "2881.TW", "國泰金": "2882.TW", "中信金": "2891.TW", "玉山金": "2884.TW",
-    "廣達": "2382.TW", "緯創": "3231.TW", "技嘉": "2376.TW", "英業達": "2356.TW"
-}
+@st.cache_data(ttl=3600)
+def load_cloud_dictionary():
+    """☁️ 從 Supabase 下載全站共用的雲端股票字典"""
+    cloud_map = {}
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        sb = create_client(url, key)
+        res = sb.table("global_stock_dictionary").select("*").execute()
+        if res.data:
+            for row in res.data:
+                cloud_map[row['cn_name']] = row['ticker']
+    except Exception as e:
+        print(f"雲端字典讀取失敗: {e}")
+    return cloud_map
+
+def get_combined_mapping():
+    """🤝 將本地急救箱與雲端字典完美融合"""
+    base_map = {
+        "台積電": "2330.TW", "聯發科": "2454.TW", "鴻海": "2317.TW",
+        "元大台灣50": "0050.TW", "國泰永續高股息": "00878.TW", "復華台灣科技優息": "00929.TW"
+    }
+    cloud_map = load_cloud_dictionary()
+    base_map.update(cloud_map) # 雲端字典擁有最高覆蓋權
+    return base_map
 
 def clean_stock_name(name):
-    """🧹 名字淨水器：把又臭又長的官方全名洗成乾淨的簡稱"""
+    """🧹 名字淨水器"""
     if not name or name == "N/A": return "N/A"
-    # 如果是全英文 (代表政府擋住了，Yahoo 抓的)，我們直接回傳，不要亂切
     if re.match(r'^[A-Za-z0-9\s\.\,\-]+$', name): return name
-    
-    # 🌟 核心黑科技：一秒斬斷所有冗長後綴！
     name = re.sub(r'(科技|工業|控股|金融控股|投資控股|建設|生物科技|股份有限公司|有限公司).*', '', name)
-    name = re.sub(r'\(.*\)|（.*）', '', name) # 移除括號 (例如某些 KY 股)
+    name = re.sub(r'\(.*\)|（.*）', '', name)
     return name.strip()
 
 def extract_id_name(item):
-    """🔑 萬能鑰匙：自動破解政府 API 隨時亂改的欄位名稱"""
     stock_id = item.get("Code") or item.get("公司代號") or item.get("證券代號") or item.get("SecuritiesCompanyCode") or ""
     stock_name = item.get("Name") or item.get("公司簡稱") or item.get("證券名稱") or item.get("CompanyName") or item.get("PaperName") or ""
-    # 套用淨水器
     return str(stock_id).strip(), clean_stock_name(str(stock_name).strip())
 
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     name_dict = {}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"}
-    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     urls = [
         "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
         "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
         "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
         "https://www.tpex.org.tw/openapi/v1/t13stk04"
     ]
-    
     for url in urls:
         try:
             res = requests.get(url, headers=headers, timeout=10)
@@ -56,15 +67,7 @@ def load_tw_stock_names():
                         name_dict[full_ticker] = stock_name
                         name_dict[stock_name] = full_ticker
                         name_dict[stock_id] = full_ticker
-        except:
-            continue
-
-    # 就算政府網站當機，我們把急救小字典倒進去保底
-    for cn_name, full_ticker in STOCK_MAPPING.items():
-        if full_ticker not in name_dict:
-            name_dict[full_ticker] = cn_name
-            name_dict[cn_name] = full_ticker
-            name_dict[full_ticker.split('.')[0]] = full_ticker 
+        except: continue
             
     return name_dict
 
@@ -73,7 +76,9 @@ def resolve_ticker(user_input):
     if not user_input: return None
     user_input = str(user_input).strip().upper()
     
-    for name, ticker in STOCK_MAPPING.items():
+    # 1. 優先查核我們的雲端無敵字典
+    combined_mapping = get_combined_mapping()
+    for name, ticker in combined_mapping.items():
         if user_input == name or user_input in name:
             return ticker
             
@@ -91,13 +96,11 @@ def resolve_ticker(user_input):
     if user_input.isdigit() or (user_input[:-1].isdigit() and user_input[-1].isalpha()):
         tw_ticker = f"{user_input}.TW"
         df_tw = yf.download(tw_ticker, period="1d", progress=False)
-        if not df_tw.empty:
-            return tw_ticker 
+        if not df_tw.empty: return tw_ticker 
             
         two_ticker = f"{user_input}.TWO"
         df_two = yf.download(two_ticker, period="1d", progress=False)
-        if not df_two.empty:
-            return two_ticker 
+        if not df_two.empty: return two_ticker 
             
     return None 
 
@@ -121,25 +124,24 @@ def load_twse_fundamentals():
     return fund_dict
 
 def run_async_crawler(watchlist):
-    """雙引擎爬蟲：先查證交所官方庫，再找 Yahoo 補漏"""
     if not watchlist: return pd.DataFrame()
     stock_names = load_tw_stock_names()
     twse_funds = load_twse_fundamentals()  
     data = []
     
+    # 偷偷把雲端字典也倒進去，確保名字絕對是中文
+    combined_mapping = get_combined_mapping()
+    inv_cloud_map = {v: k for k, v in combined_mapping.items()}
+    
     def fetch_data(ticker):
-        cn_name = stock_names.get(ticker, "N/A")
-        price = "N/A"
-        pe = "N/A"
-        dy_str = "N/A"
+        cn_name = inv_cloud_map.get(ticker, stock_names.get(ticker, "N/A"))
+        price, pe, dy_str = "N/A", "N/A", "N/A"
         
         try:
             tk = yf.Ticker(ticker)
             hist = tk.history(period="1d")
-            if not hist.empty:
-                price = round(hist['Close'].iloc[-1], 2)
-        except:
-            pass
+            if not hist.empty: price = round(hist['Close'].iloc[-1], 2)
+        except: pass
 
         if ticker in twse_funds:
             tw_pe = twse_funds[ticker].get("PE", "N/A")
@@ -148,17 +150,12 @@ def run_async_crawler(watchlist):
             
             if (cn_name == "N/A" or cn_name == "") and tw_name:
                 cn_name = tw_name
-
             pe = tw_pe if tw_pe not in ["", "-", "0.00"] else "N/A"
             dy_str = tw_dy if tw_dy not in ["", "-", "0.00"] else "N/A"
         
-        # 如果真的連名字都沒有，去求 Yahoo (這時會拿到英文)
         if cn_name == "N/A" or cn_name == "":
-            try:
-                info = tk.info
-                cn_name = info.get("shortName", ticker)
-            except:
-                cn_name = ticker
+            try: cn_name = tk.info.get("shortName", ticker)
+            except: cn_name = ticker
 
         if pe == "N/A" or dy_str == "N/A":
             try:
@@ -167,20 +164,14 @@ def run_async_crawler(watchlist):
                 if dy_str == "N/A": 
                     dy = info.get("dividendYield")
                     dy_str = round(dy * 100, 2) if dy else "N/A"
-            except:
-                pass
+            except: pass
         
-        # 🌟 出口端最後清洗：確保任何顯示出來的文字都是極致簡短乾淨的！
         cn_name = clean_stock_name(cn_name)
 
-        return {
-            "代號": ticker, "名稱": cn_name,
-            "股價": price, "本益比": pe, "殖利率(%)": dy_str
-        }
+        return {"代號": ticker, "名稱": cn_name, "股價": price, "本益比": pe, "殖利率(%)": dy_str}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        for res in executor.map(fetch_data, watchlist):
-            data.append(res)
+        for res in executor.map(fetch_data, watchlist): data.append(res)
             
     return pd.DataFrame(data)
 

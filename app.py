@@ -288,6 +288,27 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
+    # ==========================================
+    # 🛠️ SaaS 系統管理員專區：動態擴充雲端字典
+    # ==========================================
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):
+        st.caption("未來遇到查不到的股票，在此處新增即可全站同步！")
+        new_dict_name = st.text_input("股票中文名 (例: 友達)")
+        new_dict_ticker = st.text_input("股票代號 (例: 2409.TW)")
+        if st.button("💾 上傳至雲端字典", use_container_width=True):
+            if new_dict_name and new_dict_ticker:
+                try:
+                    sb = get_supabase()
+                    sb.table("global_stock_dictionary").insert({"cn_name": new_dict_name, "ticker": new_dict_ticker}).execute()
+                    st.success(f"✅ {new_dict_name} 已成功加入雲端字典！")
+                    st.cache_data.clear() # 強制清除快取，立即生效！
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ 新增失敗，該股票可能已在字典中。({e})")
+            else:
+                st.sidebar.warning("請填寫完整資訊！")
+
     st.sidebar.markdown("---")
     fee_discount = st.sidebar.slider("券商手續費折扣", 0.1, 1.0, 0.6, 0.05)
     slippage_input = st.sidebar.slider("💧 滑價懲罰 (%)", 0.0, 1.0, 0.2, 0.1) 
@@ -373,7 +394,7 @@ def main_app():
                 
                 with tabB:
                     with st.expander("📖 指標小教室 (看不懂圖看這裡)"): 
-                        st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，就是常聽到的『黃金交叉』買點！")
+                        st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，稍常聽到的『黃金交叉』買點！")
                     df_tech = load_data(target_stock, period="1y") 
                     # 🌟 套用手機防護
                     if not df_tech.empty: st.plotly_chart(plot_advanced_chart(add_indicators(df_tech), target_stock), use_container_width=True, config=mobile_config)

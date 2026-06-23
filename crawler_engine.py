@@ -5,6 +5,16 @@ import streamlit as st
 import concurrent.futures
 import requests
 
+# 建立一個基礎的中文對照字典 (您可以隨時自己把喜歡的股票加進來)
+STOCK_MAPPING = {
+    "台積電": "2330.TW",
+    "聯發科": "2454.TW",
+    "鴻海": "2317.TW",
+    "旺矽": "6223.TWO",
+    "元大台灣50": "0050.TW",
+    "國泰永續高股息": "00878.TW"
+}
+
 @st.cache_data(ttl=3600*24)
 def load_tw_stock_names():
     name_dict = {}
@@ -72,16 +82,45 @@ def _get_fallback_stock_map():
         res[full_ticker.split('.')[0]] = full_ticker 
     return res
 
-def resolve_ticker(input_str):
-    if not input_str: return None
-    input_str = input_str.strip()
-    if re.match(r'^\d{4,6}[A-Z]?\.TW[O]?$', input_str.upper()): return input_str.upper()
+def resolve_ticker(user_input):
+    """🤖 智慧尋標引擎：自動判斷上市 (.TW) 或上櫃 (.TWO)"""
+    if not user_input: return None
+    user_input = str(user_input).strip().upper()
+    
+    # 1. 字典反查：如果使用者輸入中文，直接從字典找
+    for name, ticker in STOCK_MAPPING.items():
+        if user_input == name or user_input in name:
+            return ticker
+            
+    # 2. 完美輸入：如果使用者已經乖乖輸入 .TW 或 .TWO，直接放行
+    if user_input.endswith(".TW") or user_input.endswith(".TWO"):
+        return user_input
+        
+    # 從政府開放資料快取名單找尋精確配對
     stock_map = load_tw_stock_names()
-    if input_str in stock_map and isinstance(stock_map[input_str], str) and ("." in stock_map[input_str]): return stock_map[input_str]
+    if user_input in stock_map and isinstance(stock_map[user_input], str) and ("." in stock_map[user_input]):
+        return stock_map[user_input]
+        
     for key, value in stock_map.items():
-        if "." in str(value) and (input_str in str(key)): return value
-    if re.match(r'^\d{4,6}[A-Za-z]?$', input_str): return f"{input_str.upper()}.TW"
-    return None
+        if "." in str(value) and (user_input in str(key)):
+            return value
+
+    # 3. 🎯 核心黑科技：自動偵測上市或上櫃！
+    # 如果使用者只輸入純數字 (例如 6223 或 2330) 或是 ETF (如 00929)
+    if user_input.isdigit() or (user_input[:-1].isdigit() and user_input[-1].isalpha()):
+        # 測試 A：去敲「上市」的門 (.TW)
+        tw_ticker = f"{user_input}.TW"
+        df_tw = yf.download(tw_ticker, period="1d", progress=False)
+        if not df_tw.empty:
+            return tw_ticker # 找到了！是上市股
+            
+        # 測試 B：去敲「上櫃」的門 (.TWO)
+        two_ticker = f"{user_input}.TWO"
+        df_two = yf.download(two_ticker, period="1d", progress=False)
+        if not df_two.empty:
+            return two_ticker # 找到了！是上櫃股
+            
+    return None # 真的找不到這檔股票
 
 # ==========================================
 # 🌟 獨家新增：直連台灣證券交易所官方財報庫

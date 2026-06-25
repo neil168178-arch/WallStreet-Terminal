@@ -29,7 +29,7 @@ def get_combined_mapping():
         "元大台灣50": "0050.TW", "國泰永續高股息": "00878.TW", "復華台灣科技優息": "00929.TW"
     }
     cloud_map = load_cloud_dictionary()
-    base_map.update(cloud_map) # 雲端字典擁有最高覆蓋權
+    base_map.update(cloud_map) 
     return base_map
 
 def clean_stock_name(name):
@@ -76,7 +76,6 @@ def resolve_ticker(user_input):
     if not user_input: return None
     user_input = str(user_input).strip().upper()
     
-    # 1. 優先查核我們的雲端無敵字典
     combined_mapping = get_combined_mapping()
     for name, ticker in combined_mapping.items():
         if user_input == name or user_input in name:
@@ -129,19 +128,15 @@ def run_async_crawler(watchlist):
     twse_funds = load_twse_fundamentals()  
     data = []
     
-    # 偷偷把雲端字典也倒進去，確保名字絕對是中文
     combined_mapping = get_combined_mapping()
     inv_cloud_map = {v: k for k, v in combined_mapping.items()}
     
     def format_number(val):
-        """🌟 數值淨水器：最多保留3位小數，並且把多餘的0切乾淨"""
+        """🌟 數值淨水器"""
         try:
             v = float(val)
-            # 轉成最多3位小數的字串，例如 "25.000" 或 "4.350"
             formatted = f"{v:.3f}"
-            # 去掉尾部的 0 (變成 "25." 或 "4.35")，再去掉可能剩下的 "." (變成 "25")
             formatted = formatted.rstrip('0').rstrip('.')
-            # 萬一原數值是 0.0，處理後變空字串，我們補回 "0"
             return "0" if formatted == "" else formatted
         except:
             return str(val)
@@ -149,11 +144,13 @@ def run_async_crawler(watchlist):
     def fetch_data(ticker):
         cn_name = inv_cloud_map.get(ticker, stock_names.get(ticker, "N/A"))
         price, pe, dy_str = "N/A", "N/A", "N/A"
-        change_pct = "N/A"  # 🌟 終於加上漲跌幅變數了！
+        change_pct = "N/A"  
+        trend_data = [0] # 🌟 預設空陣列
         
         try:
             tk = yf.Ticker(ticker)
-            # 🌟 為了算漲跌幅，改為抓取近 5 天資料
+            
+            # 1. 抓取近期日K算漲跌幅
             hist = tk.history(period="5d")
             if not hist.empty and len(hist) >= 2:
                 current_price = hist['Close'].iloc[-1]
@@ -162,6 +159,15 @@ def run_async_crawler(watchlist):
                 change_pct = ((current_price - prev_price) / prev_price) * 100
             elif not hist.empty and len(hist) == 1:
                 price = hist['Close'].iloc[-1]
+
+            # 2. 🌟 抓取當日盤中走勢 (每15分鐘) 供迷你圖使用
+            hist_intra = tk.history(period="1d", interval="15m")
+            if not hist_intra.empty and len(hist_intra) > 1:
+                trend_data = hist_intra['Close'].dropna().tolist()
+            else:
+                # 🛡️ 防彈機制：如果抓不到今日盤中(例如剛開盤或網路問題)，自動拿近5日的日K替代
+                trend_data = hist['Close'].dropna().tolist() if not hist.empty else [0]
+                
         except: pass
 
         if ticker in twse_funds:
@@ -189,7 +195,6 @@ def run_async_crawler(watchlist):
         
         cn_name = clean_stock_name(cn_name)
 
-        # 🌟 套用淨水器，完美清洗所有醜醜的數字
         price = format_number(price)
         change_pct = format_number(change_pct)
         pe = format_number(pe)
@@ -199,7 +204,8 @@ def run_async_crawler(watchlist):
             "代號": ticker, 
             "名稱": cn_name, 
             "股價": price, 
-            "漲跌幅(%)": change_pct, # 🌟 交給網頁前端去染色的關鍵情報！
+            "漲跌幅(%)": change_pct, 
+            "今日走勢": trend_data, # 🌟 輸出剛剛抓好的盤中K線陣列
             "本益比": pe, 
             "殖利率(%)": dy_str
         }

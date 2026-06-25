@@ -333,10 +333,11 @@ def main_app():
                 with st.expander("📖 白話文教學：為什麼波段操作要看總經大局？", expanded=False):
                     st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走，這時候做多股票很容易賠錢；反之就會有大牛市！先看懂大環境是牛市還是熊市，才不會逆勢而為。")
             
-            macro_df = fetch_macro_data()
+            # 🌟 (接續問題 1 的修改) 傳遞 is_etf_mode 變數給總經大腦
+            macro_df = fetch_macro_data(is_etf_mode)
             if not macro_df.empty: 
-                # 🌟 套用手機防護
-                st.plotly_chart(plot_macro_dashboard(macro_df), use_container_width=True, config=mobile_config)
+                # 🌟 (接續問題 1 的修改) 套用手機防護，並動態畫圖
+                st.plotly_chart(plot_macro_dashboard(macro_df, is_etf_mode), use_container_width=True, config=mobile_config)
 
         with tab1:
             render_portfolio_manager(is_etf_mode, fee_discount, save_portfolio)
@@ -363,8 +364,10 @@ def main_app():
                     df = load_data(ticker, period="5d")
                     if df is not None and len(df) >= 2:
                         l_price, p_price = df['Close'].iloc[-1], df['Close'].iloc[-2]
-                        cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)")
-                    else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
+                        # 🌟【問題 2 核心修改】：在最後方加上 delta_color="inverse"，實現台股專屬紅漲綠跌！
+                        cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)", delta_color="inverse")
+                    else: 
+                        cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
             st.markdown("---")
             with st.spinner("啟動爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)

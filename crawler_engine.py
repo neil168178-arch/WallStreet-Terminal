@@ -133,10 +133,23 @@ def run_async_crawler(watchlist):
     combined_mapping = get_combined_mapping()
     inv_cloud_map = {v: k for k, v in combined_mapping.items()}
     
+    def format_number(val):
+        """🌟 數值淨水器：最多保留3位小數，並且把多餘的0切乾淨"""
+        try:
+            v = float(val)
+            # 轉成最多3位小數的字串，例如 "25.000" 或 "4.350"
+            formatted = f"{v:.3f}"
+            # 去掉尾部的 0 (變成 "25." 或 "4.35")，再去掉可能剩下的 "." (變成 "25")
+            formatted = formatted.rstrip('0').rstrip('.')
+            # 萬一原數值是 0.0，處理後變空字串，我們補回 "0"
+            return "0" if formatted == "" else formatted
+        except:
+            return str(val)
+
     def fetch_data(ticker):
         cn_name = inv_cloud_map.get(ticker, stock_names.get(ticker, "N/A"))
         price, pe, dy_str = "N/A", "N/A", "N/A"
-        change_pct = "N/A"  # 🌟 新增漲跌幅變數
+        change_pct = "N/A"  # 🌟 終於加上漲跌幅變數了！
         
         try:
             tk = yf.Ticker(ticker)
@@ -176,13 +189,7 @@ def run_async_crawler(watchlist):
         
         cn_name = clean_stock_name(cn_name)
 
-        # 🌟 數值淨水器：把小數點後多餘的 0 全切掉，只留兩位
-        def format_number(val):
-            try:
-                return f"{float(val):.2f}"
-            except:
-                return str(val)
-
+        # 🌟 套用淨水器，完美清洗所有醜醜的數字
         price = format_number(price)
         change_pct = format_number(change_pct)
         pe = format_number(pe)
@@ -192,7 +199,7 @@ def run_async_crawler(watchlist):
             "代號": ticker, 
             "名稱": cn_name, 
             "股價": price, 
-            "漲跌幅(%)": change_pct, # 🌟 多傳送這個變數給網頁塗顏色
+            "漲跌幅(%)": change_pct, # 🌟 交給網頁前端去染色的關鍵情報！
             "本益比": pe, 
             "殖利率(%)": dy_str
         }

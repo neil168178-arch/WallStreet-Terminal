@@ -288,6 +288,27 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
+    # ==========================================
+    # 🛠️ SaaS 系統管理員專區：動態擴充雲端字典
+    # ==========================================
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):
+        st.caption("未來遇到查不到的股票，在此處新增即可全站同步！")
+        new_dict_name = st.text_input("股票中文名 (例: 友達)")
+        new_dict_ticker = st.text_input("股票代號 (例: 2409.TW)")
+        if st.button("💾 上傳至雲端字典", use_container_width=True):
+            if new_dict_name and new_dict_ticker:
+                try:
+                    sb = get_supabase()
+                    sb.table("global_stock_dictionary").insert({"cn_name": new_dict_name, "ticker": new_dict_ticker}).execute()
+                    st.success(f"✅ {new_dict_name} 已成功加入雲端字典！")
+                    st.cache_data.clear() # 強制清除快取，立即生效！
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ 新增失敗，該股票可能已在字典中。({e})")
+            else:
+                st.sidebar.warning("請填寫完整資訊！")
+
     st.sidebar.markdown("---")
     fee_discount = st.sidebar.slider("券商手續費折扣", 0.1, 1.0, 0.6, 0.05)
     slippage_input = st.sidebar.slider("💧 滑價懲罰 (%)", 0.0, 1.0, 0.2, 0.1) 
@@ -312,10 +333,8 @@ def main_app():
                 with st.expander("📖 白話文教學：為什麼波段操作要看總經大局？", expanded=False):
                     st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走，這時候做多股票很容易賠錢；反之就會有大牛市！先看懂大環境是牛市還是熊市，才不會逆勢而為。")
             
-            # 🌟【問題 1 修復】：明確指定 is_etf_mode=is_etf_mode，保護 Python 不會塞錯參數
             macro_df = fetch_macro_data(is_etf_mode=is_etf_mode)
             if not macro_df.empty: 
-                # 🌟 套用手機防護，並明確帶入模式開關給畫布
                 st.plotly_chart(plot_macro_dashboard(macro_df, is_etf_mode=is_etf_mode), use_container_width=True, config=mobile_config)
 
         with tab1:
@@ -343,13 +362,30 @@ def main_app():
                     df = load_data(ticker, period="5d")
                     if df is not None and len(df) >= 2:
                         l_price, p_price = df['Close'].iloc[-1], df['Close'].iloc[-2]
-                        # 🌟【問題 2 修復】：加入 delta_color="inverse"，實現台股專屬紅漲綠跌在地化！
                         cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)", delta_color="inverse")
                     else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
+            
             st.markdown("---")
             with st.spinner("啟動爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)
-                render_dataframe(crawler_res, hide_index=True)
+                
+                # 🌟【動態上色魔法】：判斷漲跌並漆上台股專屬紅綠色
+                def style_price_trend(row):
+                    try:
+                        change = float(row['漲跌幅(%)'])
+                        # 台股邏輯：大於0紅色，小於0綠色
+                        color = '#FF4B4B' if change > 0 else ('#00CC96' if change < 0 else '#E0E0E0')
+                        # 讓股價與漲跌幅套用顏色與粗體
+                        return [f'color: {color}; font-weight: bold;' if col in ['股價', '漲跌幅(%)'] else '' for col in row.index]
+                    except:
+                        return ['' for _ in row.index]
+                        
+                if not crawler_res.empty:
+                    # 使用 Pandas 的 style 引擎渲染
+                    styled_df = crawler_res.style.apply(style_price_trend, axis=1)
+                    st.dataframe(styled_df, hide_index=True, use_container_width=True)
+                else:
+                    st.dataframe(crawler_res, hide_index=True, use_container_width=True)
 
     elif "深度分析" in page:
         st.markdown(f"## 🎯 {sys_name} 深度 X光機")
@@ -370,14 +406,12 @@ def main_app():
                 with tabA:
                     with st.expander("📖 這是什麼圖？"): st.write("這是『分時閃電圖』，展示這檔標的在『今天盤中』每一分鐘的走勢，適合愛玩當沖或找漂亮買點的玩家看主力動向。")
                     df, name = fetch_intraday_data(target_stock)
-                    # 🌟 套用手機防護
                     if not df.empty: st.plotly_chart(plot_intraday_chart(df, target_stock, name), use_container_width=True, config=mobile_config)
                 
                 with tabB:
                     with st.expander("📖 指標小教室 (看不懂圖看這裡)"): 
                         st.write("**1. K線 (紅綠蠟燭)**：紅色代表今天漲，綠色代表今天跌。\n**2. 均線 (MA)**：大家的平均成本。股價在線上面代表大家賺錢，趨勢偏多。\n**3. RSI**：判斷是不是『漲過頭』或『跌過頭』的溫度計。低於 30 常常會觸底反彈。\n**4. MACD**：看『動能』。快線穿過慢線往上，稍常聽到的『黃金交叉』買點！")
                     df_tech = load_data(target_stock, period="1y") 
-                    # 🌟 套用手機防護
                     if not df_tech.empty: st.plotly_chart(plot_advanced_chart(add_indicators(df_tech), target_stock), use_container_width=True, config=mobile_config)
                 
                 with tabC:
@@ -433,7 +467,6 @@ def main_app():
                                     m2.metric("總獲利", f"{metrics['ROI (%)']:.1f}%")
                                     m3.metric("勝率", f"{metrics['Win Rate (%)']:.1f}%")
                                     m4.metric("最大跌幅", f"{metrics['Max Drawdown (%)']:.1f}%")
-                                    # 🌟 套用手機防護
                                     st.plotly_chart(plot_equity_curve(equity_df, title=f"📈 資金成長曲線"), use_container_width=True, config=mobile_config)
 
                     if col_btn2.button("🛡️ 防作弊盲測", use_container_width=True):
@@ -446,7 +479,6 @@ def main_app():
                                     use_atr=use_atr, a_sl=atr_sl_mult, a_tp=atr_tp_mult, r_pct=risk_pct_input, allow_short=allow_short, use_chips=False, slippage_pct=slippage_pct
                                 )
                                 st.success(f"🏆 最佳參數：短 {best_p[0]} / 長 {best_p[1]} (獲利: {best_roi:.1f}%)")
-                                # 🌟 套用手機防護
                                 if oos_m: st.plotly_chart(plot_equity_curve(oos_eq, title='📉 盲測期資金曲線'), use_container_width=True, config=mobile_config)
                                 
                     st.markdown("---")
@@ -465,7 +497,6 @@ def main_app():
                                 )
                                 if heatmap_data is not None:
                                     st.success(f"🏆 破解完成！最強參數組合為：**短 {int(best_row['Short_MA'])}MA / 長 {int(best_row['Long_MA'])}MA**，可創造 **{best_row['ROI']:.2f}%** 報酬率！")
-                                    # 🌟 套用手機防護
                                     st.plotly_chart(plot_optimization_heatmap(heatmap_data), use_container_width=True, config=mobile_config)
 
                 with tabD:
@@ -475,7 +506,6 @@ def main_app():
                         df_pred = load_data(target_stock, period="1y")
                         if not df_pred.empty:
                             sim_df, percent_df, f_dates = run_monte_carlo_simulation(df_pred)
-                            # 🌟 套用手機防護
                             if sim_df is not None: st.plotly_chart(plot_monte_carlo_forecast(df_pred, sim_df, percent_df, f_dates, target_stock), use_container_width=True, config=mobile_config)
                 
                 with tabF:
@@ -490,7 +520,6 @@ def main_app():
                                 ai_result = analyze_news_sentiment(news_df, gemini_key_input)
                                 if "error" in ai_result: st.error(ai_result["error"])
                                 else:
-                                    # 🌟 套用手機防護
                                     st.plotly_chart(plot_sentiment_gauge(ai_result.get("score", 50), ai_result.get("sentiment", "中立")), use_container_width=True, config=mobile_config)
                                     st.success(f"💡 **AI 懶人包：**\n{ai_result.get('summary', '')}")
                             else: st.warning("找不到新聞。")
@@ -504,17 +533,12 @@ def main_app():
                             if not df_ai.empty:
                                 prob_up, importance = run_ai_prediction(df_ai)
                                 if prob_up is not None:
-                                    # 🌟【重點升級區塊】：判斷是不是兩張獨立圖表，如果是，就啟動 Streamlit 列排版魔法！
                                     ai_charts = plot_ml_prediction(prob_up, importance)
                                     if isinstance(ai_charts, tuple) and len(ai_charts) == 2:
-                                        # 👉 電腦上自動分為左(col_ai1)右(col_ai2)並排，手機上自動變為上下垂直排列！
                                         col_ai1, col_ai2 = st.columns(2)
-                                        with col_ai1: 
-                                            st.plotly_chart(ai_charts[0], use_container_width=True, config=mobile_config)
-                                        with col_ai2: 
-                                            st.plotly_chart(ai_charts[1], use_container_width=True, config=mobile_config)
+                                        with col_ai1: st.plotly_chart(ai_charts[0], use_container_width=True, config=mobile_config)
+                                        with col_ai2: st.plotly_chart(ai_charts[1], use_container_width=True, config=mobile_config)
                                     else:
-                                        # 相容舊版寫法（如果還是合在一起的一張大圖）
                                         st.plotly_chart(ai_charts, use_container_width=True, config=mobile_config)
                 
                 with tabH:
@@ -558,7 +582,6 @@ def main_app():
                             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                             font=dict(color='#E0E0E0'), hovermode='x unified'
                         )
-                        # 🌟 套用手機防護
                         st.plotly_chart(fig_dca, use_container_width=True, config=mobile_config)
                     else:
                         st.markdown(f"### 💰 資金控管建議")
@@ -649,7 +672,6 @@ def main_app():
                         m2.metric("總獲利", f"{metrics['ROI (%)']:.1f}%")
                         m3.metric("勝率", f"{metrics['Win Rate (%)']:.1f}%")
                         m4.metric("最大跌幅", f"{metrics['Max Drawdown (%)']:.1f}%")
-                        # 🌟 套用手機防護
                         st.plotly_chart(plot_equity_curve(eq_df, title='🌍 資金曲線'), use_container_width=True, config=mobile_config)
 
 if __name__ == "__main__":

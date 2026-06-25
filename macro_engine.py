@@ -5,10 +5,15 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 @st.cache_data(ttl=3600)
-def fetch_macro_data(period="1y"):
-    """抓取台灣大盤與全球總經數據 (加入雙重保險與防彈機制)"""
+# 🌟 新增開關：帶入 is_etf_mode 參數，預設為 False (個股模式)
+def fetch_macro_data(period="1y", is_etf_mode=False):
+    """抓取台灣大盤與全球總經數據 (加入雙重保險與防彈機制，並支援動態切換大盤/0050)"""
+    
+    # 🌟 動態標的判斷：根據目前的獨立系統，決定第一張圖的基準
+    main_ticker = "0050.TW" if is_etf_mode else "^TWII"
+    
     tickers = {
-        "TAIEX": "^TWII",  # 台灣加權指數
+        "TAIEX": main_ticker,  # 🤖 這裡會自動變成 0050.TW 或是 ^TWII
         "USD_TWD": "TWD=X", # 美元/台幣匯率
         "US_10Y": "^TNX",   # 美國 10 年期公債殖利率
         "VIX": "^VIX"       # 芝加哥選擇權交易所 VIX 恐慌指數
@@ -27,7 +32,7 @@ def fetch_macro_data(period="1y"):
             print(f"抓取總經數據 {name} 失敗: {e}")
             pass
             
-    # 🛡️ 第一層保險：如果 Yahoo 漏抓了大盤 (^TWII)，自動改用 0050 替代
+    # 🛡️ 原本的第一層保險：如果 Yahoo 漏抓了大盤，自動改用 0050 替代 (保留原汁原味邏輯)
     if "TAIEX" not in df_dict:
         try:
             backup_data = yf.Ticker("0050.TW").history(period=period)
@@ -46,7 +51,7 @@ def fetch_macro_data(period="1y"):
         # 把最前面可能還是無法對齊的殘餘空值刪除
         macro_df.dropna(inplace=True)
         
-        # 🛡️ 第二層保險：確保 4 個欄位一定存在，缺少的就塞入 None，防止畫圖當機
+        # 🛡️ 原本的第二層保險：確保 4 個欄位一定存在
         for col in ["TAIEX", "USD_TWD", "US_10Y", "VIX"]:
             if col not in macro_df.columns:
                 macro_df[col] = None 
@@ -55,14 +60,18 @@ def fetch_macro_data(period="1y"):
         
     return pd.DataFrame()
 
-def plot_macro_dashboard(df):
+# 🌟 新增開關：畫圖函式也同步帶入 is_etf_mode
+def plot_macro_dashboard(df, is_etf_mode=False):
     """繪製專業的總經四重聯動對比圖 (防彈強化版)"""
     
-    # 🛡️ 第三層保險：如果完全沒有網路或沒有數據，回傳一個空圖表，保護系統不崩潰
+    # 🛡️ 原本的第三層保險：空數據保護
     if df.empty:
         fig = go.Figure()
         fig.update_layout(title="⚠️ 總經數據暫時無法載入，請稍後再試", template='plotly_dark')
         return fig
+
+    # 🌟 動態決定第一個子圖的標題
+    market_title = "🔵 元大台灣50 (0050) 走勢" if is_etf_mode else "🔴 台灣加權指數 (大盤) 走勢"
 
     # 建立 4 個子圖的框架，共用 X 軸 (時間)
     fig = make_subplots(
@@ -70,20 +79,23 @@ def plot_macro_dashboard(df):
         vertical_spacing=0.04,
         row_heights=[0.4, 0.2, 0.2, 0.2],
         subplot_titles=(
-            "📈 台灣加權指數 / 0050 (TAIEX)", 
-            "💵 美元/台幣匯率 (向上代表台幣貶值、外資撤出)", 
+            market_title, # 🤖 套用動態變更的專業中文標題
+            "💵 美元/台幣匯率 (外資撤出雷達)", 
             "🏦 美國 10 年期公債殖利率 (全球資金成本)", 
             "😨 VIX 恐慌指數 (市場情緒)"
         )
     )
 
-    # 🛡️ 終極防彈畫圖：使用 df.get('欄位') 代替 df['欄位']，找不到也不會報錯！
-    fig.add_trace(go.Scatter(x=df.index, y=df.get('TAIEX'), line=dict(color='#00CC96', width=2), name='大盤指數'), row=1, col=1)
+    # 決定的線條顏色 (ETF 用帥氣科技藍，個股大盤用波段警戒紅)
+    line_color = '#19D3F3' if is_etf_mode else '#FF4B4B'
+
+    # 🛡️ 終極防彈畫圖：保留原有的 df.get 做法，完美抽換線條顏色
+    fig.add_trace(go.Scatter(x=df.index, y=df.get('TAIEX'), line=dict(color=line_color, width=2), name='大盤/0050'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df.get('USD_TWD'), line=dict(color='#FFA15A', width=2), name='USD/TWD'), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df.get('US_10Y'), line=dict(color='#19D3F3', width=2), name='US 10Y Yield(%)'), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df.get('US_10Y'), line=dict(color='#00CC96', width=2), name='US 10Y Yield(%)'), row=3, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df.get('VIX'), line=dict(color='#FF4B4B', width=2), name='VIX', fill='tozeroy', fillcolor='rgba(255, 75, 75, 0.1)'), row=4, col=1)
 
-    # 🌟 介面最佳化設定
+    # 🌟 介面最佳化設定 (保留原本創辦人滿意的最優化參數)
     fig.update_layout(
         height=850,
         template='plotly_dark',

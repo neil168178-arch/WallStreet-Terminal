@@ -201,10 +201,9 @@ def main_app():
     </style>
     """, unsafe_allow_html=True)
 
-    # 🌟 📱 行動優先改造 3：定義圖表的觸控防護機制
     mobile_config = {
-        'displayModeBar': False,  # 隱藏工具列，畫面更乾淨
-        'scrollZoom': False       # 關閉滾動縮放，防止手機滑動時卡住
+        'displayModeBar': False,  
+        'scrollZoom': False       
     }
     
     if 'stock_watchlist' not in st.session_state: load_user_data()
@@ -288,9 +287,6 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
-    # ==========================================
-    # 🛠️ SaaS 系統管理員專區：動態擴充雲端字典
-    # ==========================================
     st.sidebar.markdown("---")
     with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):
         st.caption("未來遇到查不到的股票，在此處新增即可全站同步！")
@@ -302,7 +298,7 @@ def main_app():
                     sb = get_supabase()
                     sb.table("global_stock_dictionary").insert({"cn_name": new_dict_name, "ticker": new_dict_ticker}).execute()
                     st.success(f"✅ {new_dict_name} 已成功加入雲端字典！")
-                    st.cache_data.clear() # 強制清除快取，立即生效！
+                    st.cache_data.clear() 
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ 新增失敗，該股票可能已在字典中。({e})")
@@ -369,21 +365,31 @@ def main_app():
             with st.spinner("啟動爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)
                 
-                # 🌟【動態上色魔法】：判斷漲跌並漆上台股專屬紅綠色
                 def style_price_trend(row):
                     try:
                         change = float(row['漲跌幅(%)'])
-                        # 台股邏輯：大於0紅色，小於0綠色
                         color = '#FF4B4B' if change > 0 else ('#00CC96' if change < 0 else '#E0E0E0')
-                        # 讓股價與漲跌幅套用顏色與粗體
+                        # 🌟 確保只對文字欄位上色，不要影響到迷你圖表
                         return [f'color: {color}; font-weight: bold;' if col in ['股價', '漲跌幅(%)'] else '' for col in row.index]
                     except:
                         return ['' for _ in row.index]
                         
                 if not crawler_res.empty:
-                    # 使用 Pandas 的 style 引擎渲染
                     styled_df = crawler_res.style.apply(style_price_trend, axis=1)
-                    st.dataframe(styled_df, hide_index=True, use_container_width=True)
+                    
+                    # 🌟【終極黑科技】：呼叫 Streamlit 原生折線圖引擎渲染迷你 K 線
+                    st.dataframe(
+                        styled_df, 
+                        hide_index=True, 
+                        use_container_width=True,
+                        column_config={
+                            "今日走勢": st.column_config.LineChartColumn(
+                                "📈 今日走勢",
+                                width="medium",
+                                help="股票今日盤中走勢 (每15分鐘)，若無資料則顯示近五日趨勢",
+                            )
+                        }
+                    )
                 else:
                     st.dataframe(crawler_res, hide_index=True, use_container_width=True)
 

@@ -136,11 +136,19 @@ def run_async_crawler(watchlist):
     def fetch_data(ticker):
         cn_name = inv_cloud_map.get(ticker, stock_names.get(ticker, "N/A"))
         price, pe, dy_str = "N/A", "N/A", "N/A"
+        change_pct = "N/A"  # 🌟 新增漲跌幅變數
         
         try:
             tk = yf.Ticker(ticker)
-            hist = tk.history(period="1d")
-            if not hist.empty: price = round(hist['Close'].iloc[-1], 2)
+            # 🌟 為了算漲跌幅，改為抓取近 5 天資料
+            hist = tk.history(period="5d")
+            if not hist.empty and len(hist) >= 2:
+                current_price = hist['Close'].iloc[-1]
+                prev_price = hist['Close'].iloc[-2]
+                price = current_price
+                change_pct = ((current_price - prev_price) / prev_price) * 100
+            elif not hist.empty and len(hist) == 1:
+                price = hist['Close'].iloc[-1]
         except: pass
 
         if ticker in twse_funds:
@@ -163,12 +171,31 @@ def run_async_crawler(watchlist):
                 if pe == "N/A": pe = info.get("trailingPE", "N/A")
                 if dy_str == "N/A": 
                     dy = info.get("dividendYield")
-                    dy_str = round(dy * 100, 2) if dy else "N/A"
+                    dy_str = dy * 100 if dy else "N/A"
             except: pass
         
         cn_name = clean_stock_name(cn_name)
 
-        return {"代號": ticker, "名稱": cn_name, "股價": price, "本益比": pe, "殖利率(%)": dy_str}
+        # 🌟 數值淨水器：把小數點後多餘的 0 全切掉，只留兩位
+        def format_number(val):
+            try:
+                return f"{float(val):.2f}"
+            except:
+                return str(val)
+
+        price = format_number(price)
+        change_pct = format_number(change_pct)
+        pe = format_number(pe)
+        dy_str = format_number(dy_str)
+
+        return {
+            "代號": ticker, 
+            "名稱": cn_name, 
+            "股價": price, 
+            "漲跌幅(%)": change_pct, # 🌟 多傳送這個變數給網頁塗顏色
+            "本益比": pe, 
+            "殖利率(%)": dy_str
+        }
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for res in executor.map(fetch_data, watchlist): data.append(res)

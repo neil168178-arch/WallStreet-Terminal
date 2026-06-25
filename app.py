@@ -288,27 +288,6 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
-    # ==========================================
-    # 🛠️ SaaS 系統管理員專區：動態擴充雲端字典
-    # ==========================================
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):
-        st.caption("未來遇到查不到的股票，在此處新增即可全站同步！")
-        new_dict_name = st.text_input("股票中文名 (例: 友達)")
-        new_dict_ticker = st.text_input("股票代號 (例: 2409.TW)")
-        if st.button("💾 上傳至雲端字典", use_container_width=True):
-            if new_dict_name and new_dict_ticker:
-                try:
-                    sb = get_supabase()
-                    sb.table("global_stock_dictionary").insert({"cn_name": new_dict_name, "ticker": new_dict_ticker}).execute()
-                    st.success(f"✅ {new_dict_name} 已成功加入雲端字典！")
-                    st.cache_data.clear() # 強制清除快取，立即生效！
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ 新增失敗，該股票可能已在字典中。({e})")
-            else:
-                st.sidebar.warning("請填寫完整資訊！")
-
     st.sidebar.markdown("---")
     fee_discount = st.sidebar.slider("券商手續費折扣", 0.1, 1.0, 0.6, 0.05)
     slippage_input = st.sidebar.slider("💧 滑價懲罰 (%)", 0.0, 1.0, 0.2, 0.1) 
@@ -333,11 +312,11 @@ def main_app():
                 with st.expander("📖 白話文教學：為什麼波段操作要看總經大局？", expanded=False):
                     st.write("股市就像海浪，總體經濟（總經）就是月球引力。通膨太高、央行升息，大盤資金就會被抽走，這時候做多股票很容易賠錢；反之就會有大牛市！先看懂大環境是牛市還是熊市，才不會逆勢而為。")
             
-            # 🌟 (接續問題 1 的修改) 傳遞 is_etf_mode 變數給總經大腦
-            macro_df = fetch_macro_data(is_etf_mode)
+            # 🌟【問題 1 修復】：明確指定 is_etf_mode=is_etf_mode，保護 Python 不會塞錯參數
+            macro_df = fetch_macro_data(is_etf_mode=is_etf_mode)
             if not macro_df.empty: 
-                # 🌟 (接續問題 1 的修改) 套用手機防護，並動態畫圖
-                st.plotly_chart(plot_macro_dashboard(macro_df, is_etf_mode), use_container_width=True, config=mobile_config)
+                # 🌟 套用手機防護，並明確帶入模式開關給畫布
+                st.plotly_chart(plot_macro_dashboard(macro_df, is_etf_mode=is_etf_mode), use_container_width=True, config=mobile_config)
 
         with tab1:
             render_portfolio_manager(is_etf_mode, fee_discount, save_portfolio)
@@ -364,10 +343,9 @@ def main_app():
                     df = load_data(ticker, period="5d")
                     if df is not None and len(df) >= 2:
                         l_price, p_price = df['Close'].iloc[-1], df['Close'].iloc[-2]
-                        # 🌟【問題 2 核心修改】：在最後方加上 delta_color="inverse"，實現台股專屬紅漲綠跌！
+                        # 🌟【問題 2 修復】：加入 delta_color="inverse"，實現台股專屬紅漲綠跌在地化！
                         cols[i % 4].metric(f"🏷️ {ticker}", f"{l_price:.2f}", f"{l_price - p_price:.2f} ({(l_price - p_price)/p_price*100:.2f}%)", delta_color="inverse")
-                    else: 
-                        cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
+                    else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
             st.markdown("---")
             with st.spinner("啟動爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)

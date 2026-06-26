@@ -149,7 +149,8 @@ def auth_page():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        tab_login, tab_signup = st.tabs(["🔑 系統登入", "📝 註冊新帳號"])
+        # 🌟 升級點 1：新增「忘記密碼」的第三個分頁
+        tab_login, tab_signup, tab_forgot = st.tabs(["🔑 系統登入", "📝 註冊新帳號", "🆘 忘記密碼"])
         sb = get_supabase()
         
         with tab_login:
@@ -176,6 +177,20 @@ def auth_page():
                         st.success("🎉 註冊成功！請切換到「登入」分頁進行登入。")
                     except Exception as e:
                         st.error(f"❌ 註冊失敗：{e}")
+
+        # 🌟 升級點 2：忘記密碼的發信機制
+        with tab_forgot:
+            reset_email = st.text_input("請輸入您註冊的電子信箱", key="reset_email")
+            if st.button("發送密碼重設信", use_container_width=True):
+                if reset_email:
+                    with st.spinner("發送信件中..."):
+                        try:
+                            sb.auth.reset_password_for_email(reset_email)
+                            st.success("✅ 密碼重設信件已寄出！請至您的信箱點擊專屬連結。點擊後將會自動登入，屆時請至側邊欄修改您的密碼。")
+                        except Exception as e:
+                            st.error(f"❌ 發送失敗，請確認該信箱是否註冊過。")
+                else:
+                    st.warning("請先輸入您的電子信箱！")
 
 # ==========================================
 # 🏠 主程式 UI 
@@ -210,6 +225,20 @@ def main_app():
     if 'tg_token' not in st.session_state: load_user_settings()
         
     st.sidebar.markdown(f"### 👤 {st.session_state.user_email}")
+    
+    # 🌟 升級點 3：讓用戶透過信件自動登入後，可以隨時在側邊欄設定新密碼
+    with st.sidebar.expander("🔐 變更帳號密碼"):
+        new_password = st.text_input("請輸入新密碼 (至少 6 碼)", type="password")
+        if st.button("儲存新密碼", use_container_width=True):
+            if len(new_password) >= 6:
+                try:
+                    get_supabase().auth.update_user({"password": new_password})
+                    st.success("✅ 密碼更新成功！下次請使用新密碼登入。")
+                except Exception as e:
+                    st.error(f"❌ 更新失敗：{e}")
+            else:
+                st.warning("密碼長度必須至少為 6 碼！")
+
     if st.sidebar.button("🚪 安全登出", use_container_width=True):
         get_supabase().auth.sign_out()
         st.session_state.clear()
@@ -362,22 +391,19 @@ def main_app():
                     else: cols[i % 4].metric(f"🏷️ {ticker}", "無資料", "-")
             
             st.markdown("---")
-            with st.spinner("啟動爬蟲抓取中..."):
+            with st.spinner("啟爬蟲抓取中..."):
                 crawler_res = run_async_crawler(active_watchlist)
                 
                 def style_price_trend(row):
                     try:
                         change = float(row['漲跌幅(%)'])
                         color = '#FF4B4B' if change > 0 else ('#00CC96' if change < 0 else '#E0E0E0')
-                        # 🌟 確保只對文字欄位上色，不要影響到迷你圖表
                         return [f'color: {color}; font-weight: bold;' if col in ['股價', '漲跌幅(%)'] else '' for col in row.index]
                     except:
                         return ['' for _ in row.index]
                         
                 if not crawler_res.empty:
                     styled_df = crawler_res.style.apply(style_price_trend, axis=1)
-                    
-                    # 🌟【終極黑科技】：呼叫 Streamlit 原生折線圖引擎渲染迷你 K 線
                     st.dataframe(
                         styled_df, 
                         hide_index=True, 

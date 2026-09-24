@@ -307,7 +307,17 @@ def main_app():
     inv_strat_side = {v: k for k, v in strategy_dict_sidebar.items()}
     scan_strategy_name = st.sidebar.selectbox("🎯 監控策略", list(inv_strat_side.keys()))
     
-    # 🌟 站長專屬功能：全市場掃描發射台
+    # 🌟 第一顆按鈕：原本的「個人專屬名單」雷達掃描 (完全保留)
+    if st.sidebar.button(f"🚀 執行 {sys_name} 雷達掃描", type="primary", use_container_width=True):
+        if tg_token_input and tg_chat_id_input:
+            with st.spinner("啟動雷達，掃描訊號中..."):
+                success, msg = run_daily_signal_scanner(active_watchlist, inv_strat_side[scan_strategy_name], tg_token_input, tg_chat_id_input)
+                if success: st.sidebar.success(msg)
+                else: st.sidebar.error(msg)
+        else:
+            st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
+
+    # 🌟 第二顆按鈕：全新加入的「全市場平民強勢股」一鍵推播
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 👑 站長專屬：全市場發射台")
     if st.sidebar.button("📡 一鍵推播：平民強勢股日報", type="secondary", use_container_width=True):

@@ -137,7 +137,7 @@ from backtest_engine import (
     run_portfolio_backtest
 )
 from render_engine import render_dataframe, translate_df, inject_custom_css
-from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner 
+from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner, run_custom_strong_scanner 
 
 # ==========================================
 # 🔐 會員登入 / 註冊介面
@@ -317,10 +317,11 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
-    # 🌟 第二顆按鈕：全新加入的「全市場平民強勢股」一鍵推播
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 👑 站長專屬：全市場發射台")
-    if st.sidebar.button("📡 一鍵推播：平民強勢股日報", type="secondary", use_container_width=True):
+    
+    # 保留原本的懶人一鍵預設版
+    if st.sidebar.button("📡 預設推播：平民強勢股日報", type="secondary", use_container_width=True):
         if tg_token_input and tg_chat_id_input:
             with st.spinner("🌍 大海撈針掃描全市場中... (約需 10-20 秒)"):
                 success, msg = run_civilian_strong_scanner(tg_token_input, tg_chat_id_input)
@@ -331,6 +332,29 @@ def main_app():
                     st.sidebar.error(msg)
         else:
             st.sidebar.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
+            
+    # 🌟 全新升級：可展開的「自訂參數推播」面板
+    with st.sidebar.expander("🛠️ 自訂條件雷達 (進階客製化)", expanded=False):
+        c_price = st.number_input("💰 股價低於 (元)", min_value=10, value=150, step=10)
+        c_vol = st.number_input("🌊 今日成交量大於 (張)", min_value=100, value=2000, step=500)
+        c_daily = st.number_input("⚡ 今日股價起伏大於 (%)", min_value=-10.0, max_value=10.0, value=0.0, step=1.0)
+        c_5d = st.number_input("📈 近5日累積漲幅大於 (%)", min_value=-30.0, max_value=50.0, value=3.0, step=1.0)
+        
+        if st.button("🚀 發射自訂條件推播", type="primary", use_container_width=True):
+            if tg_token_input and tg_chat_id_input:
+                with st.spinner("🌍 正在套用您的專屬濾網，掃描全市場..."):
+                    success, msg = run_custom_strong_scanner(
+                        tg_token_input, tg_chat_id_input, 
+                        max_price=c_price, min_vol=c_vol, 
+                        min_daily_change=c_daily, min_5d_change=c_5d
+                    )
+                    if success:
+                        st.success(msg)
+                        st.balloons()
+                    else:
+                        st.error(msg)
+            else:
+                st.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
 
     st.sidebar.markdown("---")
     with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):

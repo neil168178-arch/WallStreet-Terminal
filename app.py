@@ -137,7 +137,7 @@ from backtest_engine import (
     run_portfolio_backtest
 )
 from render_engine import render_dataframe, translate_df, inject_custom_css
-from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner, run_custom_strong_scanner 
+from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner, run_custom_strong_scanner, run_tomorrow_recommendation_scanner 
 
 # ==========================================
 # 🔐 會員登入 / 註冊介面
@@ -250,16 +250,23 @@ def main_app():
 
     st.sidebar.markdown("---")
     
-    st.sidebar.markdown("### ⚙️ 終端機雙核心系統")
-    app_mode = st.sidebar.radio("切換您的獨立操作系統：", ["📈 個股波段系統", "📊 ETF 存股系統"])
+    st.sidebar.markdown("### ⚙️ 終端機三核心系統")
+    app_mode = st.sidebar.radio("切換您的獨立操作系統：", ["📈 個股波段系統", "📊 ETF 存股系統", "🔥 強勢股票系統"])
+    
     is_etf_mode = (app_mode == "📊 ETF 存股系統")
+    is_strong_mode = (app_mode == "🔥 強勢股票系統")
+    
+    # 決定當前宇宙的觀察名單 (強勢系統預設使用個股名單，您未來可獨立)
     active_watchlist = st.session_state.etf_watchlist if is_etf_mode else st.session_state.stock_watchlist
 
     if is_etf_mode:
         st.sidebar.info("🌐 目前位於：ETF 資產配置宇宙")
         placeholder_add, default_search, sys_name = "例如：0050, 國泰永續高股息", "0050", "ETF"
+    elif is_strong_mode:
+        st.sidebar.warning("🔥 目前位於：強勢飆股尋寶宇宙")
+        placeholder_add, default_search, sys_name = "例如：緯創, 3231", "緯創", "強勢股"
     else:
-        st.sidebar.success("🔥 目前位於：個股基本面宇宙")
+        st.sidebar.success("📈 目前位於：個股基本面宇宙")
         placeholder_add, default_search, sys_name = "例如：台積電, 2330", "台積電", "個股"
 
     st.sidebar.markdown("---")
@@ -317,33 +324,71 @@ def main_app():
         else:
             st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
 
-   # 🌟 站長專屬功能：全市場掃描發射台 (動態切換個股/ETF宇宙)
+   # 🌟 站長專屬功能：全市場掃描發射台
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"### 👑 站長專屬：全市場 {sys_name} 發射台")
     
-    if st.sidebar.button(f"📡 預設推播：平民強勢 {sys_name} 日報", type="secondary", use_container_width=True):
-        if tg_token_input and tg_chat_id_input:
-            with st.spinner(f"🌍 正在掃描全市場的 {sys_name}... (約需 10-20 秒)"):
-                # 🌟 把目前的宇宙開關 (is_etf_mode) 丟給引擎
-                success, msg = run_civilian_strong_scanner(tg_token_input, tg_chat_id_input, is_etf_mode=is_etf_mode)
-                if success:
-                    st.sidebar.success(msg)
-                    st.balloons()
-                else:
-                    st.sidebar.error(msg)
-        else:
-            st.sidebar.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
+    # 🌟 邏輯分流：如果身處第三系統 (強勢股票系統)，就專門顯示「明日預測推播」！
+    if is_strong_mode:
+        if st.sidebar.button(f"🔮 預測推播：明日 10 大潛力 {sys_name}", type="primary", use_container_width=True):
+            if tg_token_input and tg_chat_id_input:
+                with st.spinner(f"🔮 正在啟動演算法，預測明日潛力飆股... (約需 10-20 秒)"):
+                    # 強勢系統預設掃描股票，故 is_etf_mode=False
+                    success, msg = run_tomorrow_recommendation_scanner(tg_token_input, tg_chat_id_input, is_etf_mode=False)
+                    if success:
+                        st.sidebar.success(msg)
+                        st.snow()
+                    else:
+                        st.sidebar.error(msg)
+            else:
+                st.sidebar.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
+                
+    # 🌟 如果是一般個股或 ETF 系統，則顯示原本的「預設推播」與「自訂條件推播」
+    else:
+        if st.sidebar.button(f"📡 預設推播：平民強勢 {sys_name} 日報", type="secondary", use_container_width=True):
+            if tg_token_input and tg_chat_id_input:
+                with st.spinner(f"🌍 正在掃描全市場的 {sys_name}... (約需 10-20 秒)"):
+                    success, msg = run_civilian_strong_scanner(tg_token_input, tg_chat_id_input, is_etf_mode=is_etf_mode)
+                    if success:
+                        st.sidebar.success(msg)
+                        st.balloons()
+                    else:
+                        st.sidebar.error(msg)
+            else:
+                st.sidebar.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
+                
+        with st.sidebar.expander(f"🛠️ 自訂條件雷達 (抓取專屬 {sys_name})", expanded=False):
+            c_price = st.number_input("💰 股價低於 (元)", min_value=10, value=150, step=10)
+            c_vol = st.number_input("🌊 今日成交量大於 (張)", min_value=100, value=2000, step=500)
+            c_daily = st.number_input("⚡ 今日股價起伏大於 (%)", min_value=-10.0, max_value=10.0, value=0.0, step=1.0)
+            c_5d = st.number_input("📈 近5日累積漲幅大於 (%)", min_value=-30.0, max_value=50.0, value=3.0, step=1.0)
             
+            if st.button("🚀 發射自訂條件推播", use_container_width=True):
+                if tg_token_input and tg_chat_id_input:
+                    with st.spinner(f"🌍 正在套用濾網掃描全市場 {sys_name}..."):
+                        success, msg = run_custom_strong_scanner(
+                            tg_token_input, tg_chat_id_input, 
+                            max_price=c_price, min_vol=c_vol, 
+                            min_daily_change=c_daily, min_5d_change=c_5d,
+                            is_etf_mode=is_etf_mode
+                        )
+                        if success:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+                else:
+                    st.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
+
+    # 3. 自訂條件推播
     with st.sidebar.expander(f"🛠️ 自訂條件雷達 (抓取專屬 {sys_name})", expanded=False):
         c_price = st.number_input("💰 股價低於 (元)", min_value=10, value=150, step=10)
         c_vol = st.number_input("🌊 今日成交量大於 (張)", min_value=100, value=2000, step=500)
         c_daily = st.number_input("⚡ 今日股價起伏大於 (%)", min_value=-10.0, max_value=10.0, value=0.0, step=1.0)
         c_5d = st.number_input("📈 近5日累積漲幅大於 (%)", min_value=-30.0, max_value=50.0, value=3.0, step=1.0)
         
-        if st.button("🚀 發射自訂條件推播", type="primary", use_container_width=True):
+        if st.button("🚀 發射自訂條件推播", use_container_width=True):
             if tg_token_input and tg_chat_id_input:
                 with st.spinner(f"🌍 正在套用濾網掃描全市場 {sys_name}..."):
-                    # 🌟 同樣把 is_etf_mode 丟過去
                     success, msg = run_custom_strong_scanner(
                         tg_token_input, tg_chat_id_input, 
                         max_price=c_price, min_vol=c_vol, 
@@ -352,7 +397,6 @@ def main_app():
                     )
                     if success:
                         st.success(msg)
-                        st.balloons()
                     else:
                         st.error(msg)
             else:

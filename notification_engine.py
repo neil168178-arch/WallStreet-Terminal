@@ -10,14 +10,13 @@ import concurrent.futures
 # 🧠 系統底層：標的智能分類器 
 # ==========================================
 def is_etf_ticker(ticker):
-    """判斷是否為 ETF"""
     if not ticker: return False
     tk = ticker.split('.')[0]
     if tk.startswith('00') or not tk.isdigit(): return True
     return False
 
 # ==========================================
-# 📡 基礎發送與舊版存摺監控模組 (每日專屬雷達：不分股/ETF，全部掃描)
+# 📡 基礎發送與舊版存摺監控模組 (每日專屬雷達)
 # ==========================================
 def send_telegram_notify(token, chat_id, message):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -50,19 +49,15 @@ def calculate_scanner_indicators(df):
 
 def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
     if not watchlist: return False, "⚠️ 觀察名單是空的，系統無標的可掃描。"
-        
     bullish_list, bearish_list, neutral_list, error_list = [], [], [], []
-    
     for tk in watchlist:
         df = load_data(tk, period="6mo")
         if df is None or len(df) < 60: 
             error_list.append(tk)
             continue
-            
         df = calculate_scanner_indicators(df)
         last, prev = df.iloc[-1], df.iloc[-2]
         close_price, ma20 = last['Close'], last['MA20']
-        
         if strategy == 'combined':
             if close_price > ma20 and last['MACD'] > last['MACD_Signal'] and last['RSI_14'] > 50:
                 bullish_list.append({"tk": tk, "price": close_price, "reason": "站上 20 日線、MACD 向上、RSI > 50", "stop_loss": ma20})
@@ -81,27 +76,22 @@ def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     msg_lines = [f"🤖 <b>華爾街量化終端機 - 每日盤後雷達</b>", f"📅 掃描時間：{now_str}", f"🔍 掃描數量：{len(watchlist)} 檔標的\n"]
-    
     if bullish_list:
         msg_lines.append("🟢 <b>【強勢買進 / 突破訊號】</b>")
         for item in bullish_list: msg_lines.extend([f"🏷️ <b>{item['tk']}</b>", f"💵 股價：${item['price']:.2f} | 📈 {item['reason']}\n"])
     if bearish_list:
         msg_lines.append("🔴 <b>【危險警告 / 轉弱訊號】</b>")
         for item in bearish_list: msg_lines.extend([f"🏷️ <b>{item['tk']}</b>", f"💵 股價：${item['price']:.2f} | 📉 {item['reason']}\n"])
-    if neutral_list:
-        msg_lines.extend(["⚪ <b>【觀望標的】</b>", f"{', '.join(neutral_list)}\n"])
-    if error_list:
-        msg_lines.extend(["⚠️ <b>【異常標的】</b>", f"略過掃描：{', '.join(error_list)}\n"])
-        
+    if neutral_list: msg_lines.extend(["⚪ <b>【觀望標的】</b>", f"{', '.join(neutral_list)}\n"])
+    if error_list: msg_lines.extend(["⚠️ <b>【異常標的】</b>", f"略過掃描：{', '.join(error_list)}\n"])
     msg_lines.append("💡 <i>系統溫馨提醒：量化訊號僅供參考！</i>")
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
     return (True, "成功推播") if "✅" in res else (False, res)
 
 # =========================================================================
-# 🚀 全市場發射台：動態區分「個股」與「ETF」宇宙
+# 🚀 任務 1：全市場發射台 (預設 + 自訂條件)
 # =========================================================================
 def get_twse_candidates(max_price, min_vol, is_etf_mode):
-    """依照使用者條件與當前宇宙(股票/ETF)進行 API 快速初篩"""
     candidates = []
     names = {}
     try:
@@ -112,27 +102,19 @@ def get_twse_candidates(max_price, min_vol, is_etf_mode):
                 price = float(item.get('ClosingPrice', 0))
                 vol = float(item.get('TradeVolume', 0)) / 1000 
                 ticker = f"{item['Code']}.TW"
-                
-                # 🌟 第一關過濾：直接判斷是否符合當前宇宙 (是ETF模式就只抓ETF，否則只抓股票)
-                if is_etf_ticker(ticker) != is_etf_mode:
-                    continue
-                
+                if is_etf_ticker(ticker) != is_etf_mode: continue
                 if 0 < price <= max_price and vol >= min_vol:
                     candidates.append(ticker)
                     names[ticker] = item['Name']
             except: continue
-    except Exception as e:
-        print(f"證交所 API 獲取失敗: {e}")
+    except Exception as e: print(f"證交所 API 獲取失敗: {e}")
     return candidates, names
 
 def run_civilian_strong_scanner(token, chat_id, is_etf_mode):
     if not token or not chat_id: return False, "⚠️ 尚未設定 Telegram 金鑰！"
-
     sys_name = "ETF" if is_etf_mode else "個股"
     candidates, names_dict = get_twse_candidates(max_price=150, min_vol=2000, is_etf_mode=is_etf_mode)
-    
     if not candidates: return False, f"⚠️ 找不到符合初步條件的平民 {sys_name}。"
-
     candidates = candidates[:150]
     strong_stocks = []
 
@@ -145,7 +127,6 @@ def run_civilian_strong_scanner(token, chat_id, is_etf_mode):
                 price_5d_ago = close_prices.iloc[-6] if len(close_prices) >= 6 else close_prices.iloc[0]
                 ma20 = close_prices.rolling(window=20).mean().iloc[-1]
                 return_5d = ((current_price - price_5d_ago) / price_5d_ago) * 100
-                
                 if current_price > ma20 and return_5d >= 3.0 and current_price <= 150:
                     return {
                         "代號": ticker.replace('.TW', ''), "名稱": names_dict.get(ticker, ""),
@@ -166,31 +147,22 @@ def run_civilian_strong_scanner(token, chat_id, is_etf_mode):
         res = send_telegram_notify(token, chat_id, msg)
         return (True, "無標的已回報") if "✅" in res else (False, res)
 
-    # 🌟 推播標題動態變更
     msg_lines = [
         f"🚀 <b>華爾街終端機：平民強勢 {sys_name} 日報</b>",
         f"📅 日期：{now_str}",
         f"🎯 濾網：150元內 | 2000張以上 | 站上月線 | 5日漲幅>3%\n"
     ]
-    
     for i, s in enumerate(strong_stocks, 1):
-        msg_lines.extend([
-            f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
-            f"   • 股價：${s['股價']:.2f} | 🔥 動能：{s['5日漲幅']:.1f}%\n"
-        ])
-
+        msg_lines.extend([f"<b>{i}. {s['名稱']} ({s['代號']})</b>", f"   • 股價：${s['股價']:.2f} | 🔥 動能：{s['5日漲幅']:.1f}%\n"])
     msg_lines.extend(["===========================", f"💡 <i>專屬 {sys_name} 雷達掃描完畢！</i>"])
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
     return (True, f"✅ 成功發送 {len(strong_stocks)} 檔強勢 {sys_name}！") if "✅" in res else (False, res)
 
 def run_custom_strong_scanner(token, chat_id, max_price, min_vol, min_daily_change, min_5d_change, is_etf_mode):
     if not token or not chat_id: return False, "⚠️ 尚未設定 Telegram 金鑰！"
-
     sys_name = "ETF" if is_etf_mode else "個股"
     candidates, names_dict = get_twse_candidates(max_price, min_vol, is_etf_mode)
-    
-    if not candidates: return False, f"⚠️ 找不到符合您條件的 {sys_name}。"
-
+    if not candidates: return False, f"⚠️ 找不到符合條件的 {sys_name}。"
     candidates = candidates[:150]
     strong_stocks = []
 
@@ -202,10 +174,8 @@ def run_custom_strong_scanner(token, chat_id, max_price, min_vol, min_daily_chan
                 current_price = close_prices.iloc[-1]
                 prev_price = close_prices.iloc[-2]
                 price_5d_ago = close_prices.iloc[-6]
-                
                 daily_change = ((current_price - prev_price) / prev_price) * 100
                 return_5d = ((current_price - price_5d_ago) / price_5d_ago) * 100
-                
                 if (current_price <= max_price and daily_change >= min_daily_change and return_5d >= min_5d_change):
                     return {
                         "代號": ticker.replace('.TW', ''), "名稱": names_dict.get(ticker, ""),
@@ -231,14 +201,67 @@ def run_custom_strong_scanner(token, chat_id, max_price, min_vol, min_daily_chan
         f"📅 日期：{now_str}",
         f"🎯 濾網：{max_price}元內 | {min_vol}張以上 | 日起伏>{min_daily_change}% | 5日累積>{min_5d_change}%\n"
     ]
-    
     for i, s in enumerate(strong_stocks, 1):
         trend_emoji = "🔥" if s['今日漲幅'] > 0 else ("🧊" if s['今日漲幅'] < 0 else "➖")
-        msg_lines.extend([
-            f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
-            f"   • 股價：${s['股價']:.2f} | 起伏：{trend_emoji} {s['今日漲幅']:.2f}%\n"
-        ])
-
+        msg_lines.extend([f"<b>{i}. {s['名稱']} ({s['代號']})</b>", f"   • 股價：${s['股價']:.2f} | 起伏：{trend_emoji} {s['今日漲幅']:.2f}%\n"])
     msg_lines.extend(["===========================", f"💡 <i>專屬客製化 {sys_name} 雷達掃描完畢！</i>"])
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
-    return (True, f"✅ 成功發送 {len(strong_stocks)} 檔客製化 {sys_name}！") if "✅" in res else (False, res)
+    return (True, f"✅ 成功發送客製化 {sys_name}！") if "✅" in res else (False, res)
+
+# =========================================================================
+# 🚀 任務 2：明日之星預測引擎 (尋找剛出現黃金交叉的 10 大標的) 🌟【全新補上】
+# =========================================================================
+def run_tomorrow_recommendation_scanner(token, chat_id, is_etf_mode):
+    if not token or not chat_id: return False, "⚠️ 尚未設定 Telegram 金鑰！"
+    sys_name = "ETF" if is_etf_mode else "個股"
+    candidates, names_dict = get_twse_candidates(max_price=150, min_vol=2000, is_etf_mode=is_etf_mode)
+    if not candidates: return False, f"⚠️ 找不到符合條件的平民 {sys_name}。"
+
+    candidates = candidates[:150]
+    tomorrow_stars = []
+
+    def predict_momentum(ticker):
+        try:
+            hist = yf.Ticker(ticker).history(period="1mo")
+            if len(hist) >= 20:
+                df = hist.copy()
+                df['MA20'] = df['Close'].rolling(window=20).mean()
+                exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+                exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+                df['MACD'] = exp1 - exp2
+                df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+                df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+                
+                last = df.iloc[-1]
+                prev = df.iloc[-2]
+                
+                if (last['Close'] > last['MA20'] and last['MACD_Hist'] > 0 and last['MACD_Hist'] > prev['MACD_Hist']):
+                    return {
+                        "代號": ticker.replace('.TW', ''), "名稱": names_dict.get(ticker, ""),
+                        "股價": last['Close'], "動能爆發力": (last['MACD_Hist'] / last['Close']) * 100
+                    }
+        except: pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for res in executor.map(predict_momentum, candidates):
+            if res: tomorrow_stars.append(res)
+
+    tomorrow_stars = sorted(tomorrow_stars, key=lambda x: x["動能爆發力"], reverse=True)[:10]
+    now_str = datetime.now().strftime("%Y-%m-%d")
+
+    if not tomorrow_stars:
+        msg = f"🔮 <b>明日推薦預測 ({now_str})</b>\n\n今日無明顯發動跡象的 {sys_name}。"
+        res = send_telegram_notify(token, chat_id, msg)
+        return (True, "預測完成，無標的已回報") if "✅" in res else (False, res)
+
+    msg_lines = [
+        f"🔮 <b>華爾街終端機：明日十大潛力 {sys_name}</b>",
+        f"📅 日期：{now_str}",
+        f"🎯 邏輯：主力點火 | MACD 發散 | 站上月線\n"
+    ]
+    for i, s in enumerate(tomorrow_stars, 1):
+        msg_lines.extend([f"<b>{i}. {s['名稱']} ({s['代號']})</b>", f"   • 收盤價：${s['股價']:.2f} | ⚡ 推薦原因：MACD 動能噴出\n"])
+    msg_lines.extend(["===========================", f"💡 <i>CTO 溫馨提醒：請於明日開盤觀察是否延續氣勢！</i>"])
+    res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
+    return (True, f"✅ 成功發送 {len(tomorrow_stars)} 檔潛力 {sys_name}！") if "✅" in res else (False, res)

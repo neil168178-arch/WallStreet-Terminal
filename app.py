@@ -137,7 +137,7 @@ from backtest_engine import (
     run_portfolio_backtest
 )
 from render_engine import render_dataframe, translate_df, inject_custom_css
-from notification_engine import send_telegram_notify, run_daily_signal_scanner 
+from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner 
 
 # ==========================================
 # 🔐 會員登入 / 註冊介面
@@ -307,14 +307,20 @@ def main_app():
     inv_strat_side = {v: k for k, v in strategy_dict_sidebar.items()}
     scan_strategy_name = st.sidebar.selectbox("🎯 監控策略", list(inv_strat_side.keys()))
     
-    if st.sidebar.button(f"🚀 執行 {sys_name} 雷達掃描", type="primary", use_container_width=True):
+    # 🌟 站長專屬功能：全市場掃描發射台
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 👑 站長專屬：全市場發射台")
+    if st.sidebar.button("📡 一鍵推播：平民強勢股日報", type="secondary", use_container_width=True):
         if tg_token_input and tg_chat_id_input:
-            with st.spinner("啟動雷達，掃描訊號中..."):
-                success, msg = run_daily_signal_scanner(active_watchlist, inv_strat_side[scan_strategy_name], tg_token_input, tg_chat_id_input)
-                if success: st.sidebar.success(msg)
-                else: st.sidebar.error(msg)
+            with st.spinner("🌍 大海撈針掃描全市場中... (約需 10-20 秒)"):
+                success, msg = run_civilian_strong_scanner(tg_token_input, tg_chat_id_input)
+                if success:
+                    st.sidebar.success(msg)
+                    st.balloons()
+                else:
+                    st.sidebar.error(msg)
         else:
-            st.sidebar.warning("⚠️ 掃描前請務必輸入 Telegram Token 與 Chat ID！")
+            st.sidebar.warning("⚠️ 請先在上方輸入並儲存 Telegram 金鑰！")
 
     st.sidebar.markdown("---")
     with st.sidebar.expander("🛠️ 系統管理員：新增雲端字典"):

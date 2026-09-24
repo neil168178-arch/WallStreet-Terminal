@@ -6,6 +6,19 @@ from data_engine import load_data
 import yfinance as yf
 import concurrent.futures
 
+# ==========================================
+# 🧠 系統底層：標的智能分類器 
+# ==========================================
+def is_etf_ticker(ticker):
+    """判斷是否為 ETF (代號為 00 開頭，或包含英文字母如 00900B)"""
+    if not ticker: return False
+    tk = ticker.split('.')[0]
+    if tk.startswith('00') or not tk.isdigit(): return True
+    return False
+
+# ==========================================
+# 📡 基礎發送與舊版存摺監控模組
+# ==========================================
 def send_telegram_notify(token, chat_id, message):
     """將文字訊號發送至您的 Telegram 手機 APP"""
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -99,13 +112,10 @@ def run_daily_signal_scanner(watchlist, strategy, token, chat_id):
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
     return (True, "成功推播") if "✅" in res else (False, res)
 
-
 # =========================================================================
 # 🚀 任務 1 全新引擎：全市場掃描「平民強勢股 (150元內)」並推播
 # =========================================================================
-
 def get_twse_civilian_candidates():
-    """從證交所 API 快速初篩：價格 <= 150 且 成交量 >= 2000 張的上市股票/ETF"""
     candidates = []
     names = {}
     try:
@@ -114,34 +124,25 @@ def get_twse_civilian_candidates():
         for item in res:
             try:
                 price = float(item.get('ClosingPrice', 0))
-                # 證交所的 TradeVolume 是「股數」，除以 1000 變「張數」
                 vol = float(item.get('TradeVolume', 0)) / 1000 
-                # 🌟 套用創辦人標準：150元以內
                 if 0 < price <= 150 and vol >= 2000:
                     ticker = f"{item['Code']}.TW"
                     candidates.append(ticker)
                     names[ticker] = item['Name']
-            except:
-                continue
+            except: continue
     except Exception as e:
         print(f"證交所 API 獲取失敗: {e}")
     return candidates, names
 
 def run_civilian_strong_scanner(token, chat_id):
-    """🚀 核心引擎：掃描平民強勢股並使用舊有發送函式推播"""
-    if not token or not chat_id:
-        return False, "⚠️ 尚未設定 Telegram 金鑰！"
+    if not token or not chat_id: return False, "⚠️ 尚未設定 Telegram 金鑰！"
 
-    # 1. API 秒速初篩
     candidates, names_dict = get_twse_civilian_candidates()
-    if not candidates:
-        return False, "⚠️ 找不到符合初步條件的標的，或證交所 API 維護中。"
+    if not candidates: return False, "⚠️ 找不到符合初步條件的標的，或證交所 API 維護中。"
 
-    # 避免抓取過久，取前 150 檔初篩名單進行深度技術運算
     candidates = candidates[:150]
     strong_stocks = []
 
-    # 2. 第二層濾網：YFinance 深度技術分析
     def check_technical(ticker):
         try:
             hist = yf.Ticker(ticker).history(period="2mo") 
@@ -153,7 +154,6 @@ def run_civilian_strong_scanner(token, chat_id):
                 ma20 = close_prices.rolling(window=20).mean().iloc[-1]
                 return_5d = ((current_price - price_5d_ago) / price_5d_ago) * 100
                 
-                # 🔥 嚴格條件：站上月線且 5日漲幅 > 3%，並且確保即時價格仍 <= 150
                 if current_price > ma20 and return_5d >= 3.0 and current_price <= 150:
                     return {
                         "代號": ticker.replace('.TW', ''),
@@ -162,46 +162,55 @@ def run_civilian_strong_scanner(token, chat_id):
                         "5日漲幅": return_5d,
                         "月線狀態": "✅ 站上 20MA"
                     }
-        except:
-            pass
+        except: pass
         return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(check_technical, candidates)
-        for res in results:
+        for res in executor.map(check_technical, candidates):
             if res: strong_stocks.append(res)
 
-    # 3. 排序與產出報告 (依照漲幅排行，最多推播 10 檔)
-    strong_stocks = sorted(strong_stocks, key=lambda x: x["5日漲幅"], reverse=True)[:10]
+    strong_stocks = sorted(strong_stocks, key=lambda x: x["5日漲幅"], reverse=True)[:15] # 放寬至15檔供分類
     now_str = datetime.now().strftime("%Y-%m-%d")
 
     if not strong_stocks:
-        msg = f"📊 <b>本日量化雷達報告 ({now_str})</b>\n\n今日市場震盪，無符合「平民強勢股」條件之標的。請保持紀律，耐心等候！"
+        msg = f"📊 <b>本日量化雷達報告 ({now_str})</b>\n\n今日市場震盪，無符合「平民強勢股」條件之標的。"
         res = send_telegram_notify(token, chat_id, msg)
         return (True, "掃描完成，今日無符合標的已回報 TG。") if "✅" in res else (False, res)
 
-    # 4. 組合 Telegram HTML 排版訊息 (為了相容原有的 send_telegram_notify)
+    # 🌟 神級優化：將結果分為 ETF 與 個股 兩大陣營
+    etf_list = [s for s in strong_stocks if is_etf_ticker(s['代號'])]
+    stock_list = [s for s in strong_stocks if not is_etf_ticker(s['代號'])]
+
     msg_lines = [
         f"🚀 <b>華爾街量化終端機：平民強勢股日報</b>",
         f"📅 日期：{now_str}",
         f"🎯 濾網：150元內 | 2000張以上 | 站上月線 | 近5日漲幅>3%\n"
     ]
     
-    for i, s in enumerate(strong_stocks, 1):
-        msg_lines.extend([
-            f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
-            f"   • 股價：${s['股價']:.2f}",
-            f"   • 動能：🔥 {s['5日漲幅']:.1f}%",
-            f"   • 狀態：{s['月線狀態']}\n"
-        ])
+    if etf_list:
+        msg_lines.append("📊 <b>【強勢 ETF 專區】(存股避險)</b>")
+        for i, s in enumerate(etf_list, 1):
+            msg_lines.extend([
+                f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
+                f"   • 股價：${s['股價']:.2f} | 🔥 動能：{s['5日漲幅']:.1f}%\n"
+            ])
 
-    msg_lines.extend(["===========================", "💡 <i>CTO 溫馨提醒：量化過濾標的僅供參考，請嚴格設定單筆風險與資金控管！</i>"])
-    
-    # 5. 發射推播
+    if stock_list:
+        msg_lines.append("🔥 <b>【強勢個股 專區】(波段爆發)</b>")
+        for i, s in enumerate(stock_list, 1):
+            msg_lines.extend([
+                f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
+                f"   • 股價：${s['股價']:.2f} | 🔥 動能：{s['5日漲幅']:.1f}%\n"
+            ])
+
+    msg_lines.extend(["===========================", "💡 <i>CTO 溫馨提醒：量化過濾標的僅供參考，請嚴格設定單筆風險！</i>"])
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
-    return (True, f"✅ 成功掃描並發送 {len(strong_stocks)} 檔強勢股至 Telegram！") if "✅" in res else (False, res)
+    return (True, f"✅ 成功發送 {len(strong_stocks)} 檔強勢股至 Telegram！") if "✅" in res else (False, res)
+
+# =========================================================================
+# 🚀 任務 1 進階版：動態自訂條件！全市場掃描與推播
+# =========================================================================
 def get_twse_custom_candidates(max_price, min_vol):
-    """從證交所 API 快速初篩：依照使用者輸入的股價與成交量過濾"""
     candidates = []
     names = {}
     try:
@@ -210,52 +219,40 @@ def get_twse_custom_candidates(max_price, min_vol):
         for item in res:
             try:
                 price = float(item.get('ClosingPrice', 0))
-                # 證交所的 TradeVolume 是「股數」，除以 1000 變「張數」
                 vol = float(item.get('TradeVolume', 0)) / 1000 
-                # 🌟 套用使用者自訂的股價上限與成交量下限
                 if 0 < price <= max_price and vol >= min_vol:
                     ticker = f"{item['Code']}.TW"
                     candidates.append(ticker)
                     names[ticker] = item['Name']
-            except:
-                continue
+            except: continue
     except Exception as e:
         print(f"證交所 API 獲取失敗: {e}")
     return candidates, names
 
 def run_custom_strong_scanner(token, chat_id, max_price, min_vol, min_daily_change, min_5d_change):
-    """🚀 核心引擎：依據使用者自訂條件掃描全市場"""
-    if not token or not chat_id:
-        return False, "⚠️ 尚未設定 Telegram 金鑰！"
+    if not token or not chat_id: return False, "⚠️ 尚未設定 Telegram 金鑰！"
 
-    # 1. API 秒速初篩 (用自訂的價格與成交量)
     candidates, names_dict = get_twse_custom_candidates(max_price, min_vol)
-    if not candidates:
-        return False, "⚠️ 找不到符合您價格與成交量條件的標的。"
+    if not candidates: return False, "⚠️ 找不到符合您價格與成交量條件的標的。"
 
-    # 避免抓取過久，取前 150 檔初篩名單進行深度運算
     candidates = candidates[:150]
     strong_stocks = []
 
-    # 2. 第二層濾網：YFinance 技術分析 (用自訂的今日起伏與5日漲幅)
     def check_technical(ticker):
         try:
-            hist = yf.Ticker(ticker).history(period="10d") # 抓10天確保能算5日漲跌
+            hist = yf.Ticker(ticker).history(period="10d")
             if len(hist) >= 6:
                 close_prices = hist['Close']
                 current_price = close_prices.iloc[-1]
                 prev_price = close_prices.iloc[-2]
                 price_5d_ago = close_prices.iloc[-6]
                 
-                # 計算今日起伏(%) 與 5日累積漲幅(%)
                 daily_change = ((current_price - prev_price) / prev_price) * 100
                 return_5d = ((current_price - price_5d_ago) / price_5d_ago) * 100
                 
-                # 🔥 嚴格核對使用者的四大條件
                 if (current_price <= max_price and 
                     daily_change >= min_daily_change and 
                     return_5d >= min_5d_change):
-                    
                     return {
                         "代號": ticker.replace('.TW', ''),
                         "名稱": names_dict.get(ticker, ""),
@@ -263,44 +260,49 @@ def run_custom_strong_scanner(token, chat_id, max_price, min_vol, min_daily_chan
                         "今日漲幅": daily_change,
                         "5日漲幅": return_5d
                     }
-        except:
-            pass
+        except: pass
         return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(check_technical, candidates)
-        for res in results:
+        for res in executor.map(check_technical, candidates):
             if res: strong_stocks.append(res)
 
-    # 3. 排序與產出報告 (依照今日漲幅排行，最多推播 15 檔)
     strong_stocks = sorted(strong_stocks, key=lambda x: x["今日漲幅"], reverse=True)[:15]
     now_str = datetime.now().strftime("%Y-%m-%d")
 
     if not strong_stocks:
-        msg = f"📊 <b>自訂條件雷達報告 ({now_str})</b>\n\n依據您的嚴格條件，今日全市場無符合標的。請嘗試放寬標準！"
+        msg = f"📊 <b>自訂條件雷達報告 ({now_str})</b>\n\n依據您的嚴格條件，今日無符合標的。"
         res = send_telegram_notify(token, chat_id, msg)
-        return (True, "掃描完成，今日無符合標的已回報 TG。") if "✅" in res else (False, res)
+        return (True, "掃描完成，無符合標的已回報 TG。") if "✅" in res else (False, res)
 
-    # 4. 組合 Telegram HTML 排版訊息
+    # 🌟 神級優化：將客製化結果也分為 ETF 與 個股 兩大陣營
+    etf_list = [s for s in strong_stocks if is_etf_ticker(s['代號'])]
+    stock_list = [s for s in strong_stocks if not is_etf_ticker(s['代號'])]
+
     msg_lines = [
         f"🚀 <b>華爾街量化終端機：自訂強勢股推播</b>",
         f"📅 日期：{now_str}",
-        f"🎯 您的濾網：{max_price}元內 | {min_vol}張以上 | 今日漲跌幅>{min_daily_change}% | 5日累積>{min_5d_change}%\n"
+        f"🎯 濾網：{max_price}元內 | {min_vol}張以上 | 日起伏>{min_daily_change}% | 5日累積>{min_5d_change}%\n"
     ]
     
-    for i, s in enumerate(strong_stocks, 1):
-        # 幫今日漲跌幅上個表情符號
-        trend_emoji = "🔥" if s['今日漲幅'] > 0 else ("🧊" if s['今日漲幅'] < 0 else "➖")
-        
-        msg_lines.extend([
-            f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
-            f"   • 股價：${s['股價']:.2f}",
-            f"   • 今日起伏：{trend_emoji} {s['今日漲幅']:.2f}%",
-            f"   • 近5日累積：📈 {s['5日漲幅']:.2f}%\n"
-        ])
+    if etf_list:
+        msg_lines.append("📊 <b>【客製化 ETF 專區】</b>")
+        for i, s in enumerate(etf_list, 1):
+            trend_emoji = "🔥" if s['今日漲幅'] > 0 else ("🧊" if s['今日漲幅'] < 0 else "➖")
+            msg_lines.extend([
+                f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
+                f"   • 股價：${s['股價']:.2f} | 起伏：{trend_emoji} {s['今日漲幅']:.2f}%\n"
+            ])
+
+    if stock_list:
+        msg_lines.append("🔥 <b>【客製化個股 專區】</b>")
+        for i, s in enumerate(stock_list, 1):
+            trend_emoji = "🔥" if s['今日漲幅'] > 0 else ("🧊" if s['今日漲幅'] < 0 else "➖")
+            msg_lines.extend([
+                f"<b>{i}. {s['名稱']} ({s['代號']})</b>",
+                f"   • 股價：${s['股價']:.2f} | 起伏：{trend_emoji} {s['今日漲幅']:.2f}%\n"
+            ])
 
     msg_lines.extend(["===========================", "💡 <i>站長專屬客製化雷達掃描完畢，祝您操作順利！</i>"])
-    
-    # 5. 發射推播
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
-    return (True, f"✅ 成功掃描並發送 {len(strong_stocks)} 檔客製化飆股至 Telegram！") if "✅" in res else (False, res)
+    return (True, f"✅ 成功發送 {len(strong_stocks)} 檔客製化飆股至 Telegram！") if "✅" in res else (False, res)

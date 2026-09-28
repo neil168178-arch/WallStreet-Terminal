@@ -138,6 +138,7 @@ from backtest_engine import (
 )
 from render_engine import render_dataframe, translate_df, inject_custom_css
 from notification_engine import send_telegram_notify, run_daily_signal_scanner, run_civilian_strong_scanner, run_custom_strong_scanner, run_tomorrow_recommendation_scanner
+from strong_ui import render_strong_system
 # ==========================================
 # 🔐 會員登入 / 註冊介面
 # ==========================================
@@ -400,10 +401,18 @@ def main_app():
     slippage_input = st.sidebar.slider("💧 滑價懲罰 (%)", 0.0, 1.0, 0.2, 0.1) 
     slippage_pct = slippage_input / 100.0
 
-    # ==========================================
+   # ==========================================
     # 分頁核心邏輯
     # ==========================================
-    if "主控儀表板" in page:
+    if is_strong_mode:
+        render_strong_system(
+            add_to_watchlist_fn=add_to_watchlist,
+            tg_token=tg_token_input,
+            tg_chat_id=tg_chat_id_input,
+            mobile_config=mobile_config
+        )
+
+    elif "主控儀表板" in page:
         st.markdown(f"## 🏠 {sys_name} 專屬主控儀表板")
         
         if is_etf_mode:

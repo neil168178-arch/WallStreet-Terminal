@@ -265,3 +265,114 @@ def run_tomorrow_recommendation_scanner(token, chat_id, is_etf_mode):
     msg_lines.extend(["===========================", f"💡 <i>CTO 溫馨提醒：請於明日開盤觀察是否延續氣勢！</i>"])
     res = send_telegram_notify(token, chat_id, "\n".join(msg_lines))
     return (True, f"✅ 成功發送 {len(tomorrow_stars)} 檔潛力 {sys_name}！") if "✅" in res else (False, res)
+# =========================================================================
+# 🔥 第三系統專屬：視覺化複合式狩獵引擎 (支援零股/整張、爆量倍數、迷你走勢圖)
+# =========================================================================
+def run_visual_strong_scanner(
+    is_etf_mode, max_price, min_shares, min_daily_change, 
+    min_5d_change, min_vol_ratio, require_ma20, require_macd
+):
+    """回傳符合自訂狩獵條件的 DataFrame 供網頁視覺化呈現"""
+    candidates = []
+    names_dict = {}
+    raw_vols = {}
+    
+    try:
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        res = requests.get(url, timeout=10).json()
+        for item in res:
+            try:
+                price = float(item.get('ClosingPrice', 0))
+                # 證交所 TradeVolume 原始單位即為「股數(零股)」
+                shares = float(item.get('TradeVolume', 0))
+                ticker = f"{item['Code']}.TW"
+                
+                # 1. 嚴格分流：個股 vs ETF
+                if is_etf_ticker(ticker) != is_etf_mode:
+                    continue
+                # 2. 初步過濾：股價與最低成交股數
+                if 0 < price <= max_price and shares >= min_shares:
+                    candidates.append(ticker)
+                    names_dict[ticker] = item['Name']
+                    raw_vols[ticker] = int(shares)
+            except:
+                continue
+    except Exception as e:
+        print(f"證交所 API 獲取失敗: {e}")
+        return pd.DataFrame()
+
+    if not candidates:
+        return pd.DataFrame()
+
+    # 依成交量排序，取前 120 檔最活絡標的進行深度技術運算
+    candidates = sorted(candidates, key=lambda x: raw_vols.get(x, 0), reverse=True)[:120]
+    results_list = []
+
+    def analyze_hunter_target(ticker):
+        try:
+            hist = yf.Ticker(ticker).history(period="2mo")
+            if len(hist) >= 20:
+                df = calculate_scanner_indicators(hist)
+                close_prices = df['Close']
+                volumes = df['Volume']
+                
+                last = df.iloc[-1]
+                prev = df.iloc[-2]
+                price_5d_ago = close_prices.iloc[-6] if len(close_prices) >= 6 else close_prices.iloc[0]
+                
+                current_price = float(last['Close'])
+                if current_price > max_price:
+                    return None
+                
+                daily_change = ((current_price - float(prev['Close'])) / float(prev['Close'])) * 100
+                return_5d = ((current_price - float(price_5d_ago)) / float(price_5d_ago)) * 100
+                
+                # 計算爆量倍數 (今日量 ÷ 前5日均量)
+                avg_vol_5d = volumes.iloc[-6:-1].mean()
+                vol_ratio = (float(last['Volume']) / avg_vol_5d) if avg_vol_5d > 0 else 1.0
+                
+                # 計算 MACD 柱狀圖動能
+                macd_hist_last = float(last['MACD'] - last['MACD_Signal'])
+                macd_hist_prev = float(prev['MACD'] - prev['MACD_Signal'])
+                
+                # 核對數值濾網
+                if daily_change < min_daily_change or return_5d < min_5d_change or vol_ratio < min_vol_ratio:
+                    return None
+                # 核對技術面開關
+                if require_ma20 and current_price <= float(last['MA20']):
+                    return None
+                if require_macd and not (macd_hist_last > 0 and macd_hist_last > macd_hist_prev):
+                    return None
+                
+                # 抓取近 10 日收盤價作為迷你走勢圖數據
+                sparkline = [round(float(x), 2) for x in close_prices.tail(10).tolist()]
+                rsi_val = float(last['RSI_14']) if pd.notna(last['RSI_14']) else 50.0
+                shares_count = raw_vols.get(ticker, int(last['Volume']))
+                
+                return {
+                    "➕ 選取": False,
+                    "代號": ticker.replace('.TW', ''),
+                    "名稱": names_dict.get(ticker, ""),
+                    "股價": round(current_price, 2),
+                    "今日起伏(%)": round(daily_change, 2),
+                    "5日漲幅(%)": round(return_5d, 2),
+                    "💥 爆量倍數": round(vol_ratio, 2),
+                    "成交量(股)": shares_count,
+                    "成交量(張)": int(shares_count // 1000),
+                    "🔥 動能強度": int(min(max(rsi_val, 0), 100)),
+                    "📈 近期走勢": sparkline
+                }
+        except:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for res in executor.map(analyze_hunter_target, candidates):
+            if res:
+                results_list.append(res)
+
+    if not results_list:
+        return pd.DataFrame()
+
+    df_out = pd.DataFrame(results_list)
+    return df_out.sort_values(by="今日起伏(%)", ascending=False).reset_index(drop=True)

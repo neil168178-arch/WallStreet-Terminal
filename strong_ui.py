@@ -1,24 +1,166 @@
 import streamlit as st
 import pandas as pd
+import requests
+import yfinance as yf
+import concurrent.futures
 from datetime import datetime
 from data_engine import load_data
 from strategy_engine import add_indicators
 from visual_engine import plot_advanced_chart
 from intraday_engine import fetch_intraday_data, plot_intraday_chart
-from notification_engine import is_etf_ticker, send_telegram_notify, run_visual_strong_scanner
+from notification_engine import send_telegram_notify
 
+# ==========================================
+# 🧠 內建智能分類與技術指標計算 (自給自足免匯入)
+# ==========================================
+def is_etf_ticker(ticker):
+    """判斷是否為 ETF"""
+    if not ticker: return False
+    tk = str(ticker).split('.')[0]
+    if tk.startswith('00') or not tk.isdigit(): return True
+    return False
+
+def calc_hunter_indicators(df):
+    """計算強勢股所需之 MA20、MACD、RSI 指標"""
+    df = df.copy()
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    delta = df['Close'].diff()
+    up = delta.clip(lower=0)
+    down = -1 * delta.clip(upper=0)
+    ema_up = up.ewm(com=13, adjust=False).mean()
+    ema_down = down.ewm(com=13, adjust=False).mean()
+    rs = ema_up / ema_down
+    df['RSI_14'] = 100 - (100 / (1 + rs))
+    return df
+
+# ==========================================
+# 🚀 內建視覺化複合式狩獵引擎
+# ==========================================
+def run_visual_strong_scanner(
+    is_etf_mode, max_price, min_shares, min_daily_change, 
+    min_5d_change, min_vol_ratio, require_ma20, require_macd
+):
+    """回傳符合自訂狩獵條件的 DataFrame 供網頁視覺化呈現"""
+    candidates = []
+    names_dict = {}
+    raw_vols = {}
+    
+    try:
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        res = requests.get(url, timeout=10).json()
+        for item in res:
+            try:
+                price = float(item.get('ClosingPrice', 0))
+                shares = float(item.get('TradeVolume', 0))
+                ticker = f"{item['Code']}.TW"
+                
+                # 1. 嚴格分流：個股 vs ETF
+                if is_etf_ticker(ticker) != is_etf_mode:
+                    continue
+                # 2. 初步過濾：股價與最低成交股數
+                if 0 < price <= max_price and shares >= min_shares:
+                    candidates.append(ticker)
+                    names_dict[ticker] = item['Name']
+                    raw_vols[ticker] = int(shares)
+            except:
+                continue
+    except Exception as e:
+        print(f"證交所 API 獲取失敗: {e}")
+        return pd.DataFrame()
+
+    if not candidates:
+        return pd.DataFrame()
+
+    # 依成交量排序，取前 120 檔最活絡標的進行深度技術運算
+    candidates = sorted(candidates, key=lambda x: raw_vols.get(x, 0), reverse=True)[:120]
+    results_list = []
+
+    def analyze_hunter_target(ticker):
+        try:
+            hist = yf.Ticker(ticker).history(period="2mo")
+            if len(hist) >= 20:
+                df = calc_hunter_indicators(hist)
+                close_prices = df['Close']
+                volumes = df['Volume']
+                
+                last = df.iloc[-1]
+                prev = df.iloc[-2]
+                price_5d_ago = close_prices.iloc[-6] if len(close_prices) >= 6 else close_prices.iloc[0]
+                
+                current_price = float(last['Close'])
+                if current_price > max_price:
+                    return None
+                
+                daily_change = ((current_price - float(prev['Close'])) / float(prev['Close'])) * 100
+                return_5d = ((current_price - float(price_5d_ago)) / float(price_5d_ago)) * 100
+                
+                # 計算爆量倍數 (今日量 ÷ 前5日均量)
+                avg_vol_5d = volumes.iloc[-6:-1].mean()
+                vol_ratio = (float(last['Volume']) / avg_vol_5d) if avg_vol_5d > 0 else 1.0
+                
+                # 計算 MACD 柱狀圖動能
+                macd_hist_last = float(last['MACD'] - last['MACD_Signal'])
+                macd_hist_prev = float(prev['MACD'] - prev['MACD_Signal'])
+                
+                # 核對數值濾網
+                if daily_change < min_daily_change or return_5d < min_5d_change or vol_ratio < min_vol_ratio:
+                    return None
+                # 核對技術面開關
+                if require_ma20 and current_price <= float(last['MA20']):
+                    return None
+                if require_macd and not (macd_hist_last > 0 and macd_hist_last > macd_hist_prev):
+                    return None
+                
+                # 抓取近 10 日收盤價作為迷你走勢圖數據
+                sparkline = [round(float(x), 2) for x in close_prices.tail(10).tolist()]
+                rsi_val = float(last['RSI_14']) if pd.notna(last['RSI_14']) else 50.0
+                shares_count = raw_vols.get(ticker, int(last['Volume']))
+                
+                return {
+                    "➕ 選取": False,
+                    "代號": ticker.replace('.TW', ''),
+                    "名稱": names_dict.get(ticker, ""),
+                    "股價": round(current_price, 2),
+                    "今日起伏(%)": round(daily_change, 2),
+                    "5日漲幅(%)": round(return_5d, 2),
+                    "💥 爆量倍數": round(vol_ratio, 2),
+                    "成交量(股)": shares_count,
+                    "成交量(張)": int(shares_count // 1000),
+                    "🔥 動能強度": int(min(max(rsi_val, 0), 100)),
+                    "📈 近期走勢": sparkline
+                }
+        except:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for res in executor.map(analyze_hunter_target, candidates):
+            if res:
+                results_list.append(res)
+
+    if not results_list:
+        return pd.DataFrame()
+
+    df_out = pd.DataFrame(results_list)
+    return df_out.sort_values(by="今日起伏(%)", ascending=False).reset_index(drop=True)
+
+
+# ==========================================
+# 🖥️ 第三核心：強勢飆股與 ETF 視覺化狩獵大廳 UI
+# ==========================================
 def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_config):
     """🔥 第三核心：強勢飆股與 ETF 視覺化狩獵大廳"""
     
-    # 初始化記憶體快取 (防卡頓零延遲機制)
     if 'strong_df_cache' not in st.session_state:
         st.session_state.strong_df_cache = pd.DataFrame()
     if 'strong_last_update' not in st.session_state:
         st.session_state.strong_last_update = "尚未掃描 (請點擊下方按鈕啟動)"
 
-    # ==========================================
     # 頂部狀態列與強制刷新按鈕
-    # ==========================================
     col_title, col_btn = st.columns([3, 1])
     with col_title:
         st.markdown("## 🔥 強勢標的視覺化狩獵中心")
@@ -32,9 +174,7 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
 
     st.markdown("---")
 
-    # ==========================================
     # 第一區：🎛️ 複合式狩獵控制台
-    # ==========================================
     st.markdown("### 🎛️ 第一區：複合式狩獵控制台")
     
     c_mode1, c_mode2, c_mode3 = st.columns(3)
@@ -51,7 +191,6 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
         vol_unit = st.radio("🌱 3. 成交量單位 (學生/主力切換)", ["🌱 零股模式 (單位：股)", "📦 整張模式 (單位：張)"], horizontal=True)
         is_odd_lot = ("零股" in vol_unit)
 
-    # 根據預設模式自動帶入參數
     default_price = 150
     default_5d = 3.0 if "平民強勢" in preset_mode else -10.0
     default_ma20 = True
@@ -95,15 +234,12 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
             else:
                 st.success(f"🎉 掃描完成！共抓出 {len(df_res)} 檔強勢 {u_name}！")
 
-    # ==========================================
     # 第二區：📋 視覺化飆股尋寶牆 (打勾入庫 + 同步推播)
-    # ==========================================
     df_show = st.session_state.strong_df_cache
     if not df_show.empty:
         st.markdown("---")
         st.markdown(f"### 📋 第二區：強勢{u_name}即時尋寶牆 (打勾即可存入名單)")
         
-        # 根據零股或整張模式，動態決定顯示哪一個成交量欄位
         vol_col_to_hide = "成交量(張)" if is_odd_lot else "成交量(股)"
         display_cols = [c for c in df_show.columns if c != vol_col_to_hide]
 
@@ -126,13 +262,11 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
                 if selected_rows.empty:
                     st.warning("⚠️ 請先在表格最左側將喜歡的標的「打勾」！")
                 else:
-                    added_count = 0
                     target_watchlist = st.session_state.etf_watchlist if scan_is_etf else st.session_state.stock_watchlist
                     for _, r in selected_rows.iterrows():
                         full_tk = f"{r['代號']}.TW"
                         if full_tk not in target_watchlist:
                             add_to_watchlist_fn(full_tk, scan_is_etf)
-                            added_count += 1
                     st.success(f"✅ 已將勾選的標的同步寫入 Supabase 雲端名單！")
 
         with act2:
@@ -157,9 +291,7 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
                     else:
                         st.error(res)
 
-        # ==========================================
         # 第三區：🎯 同頁極速狙擊鏡 (K線 + 心電圖 + 學生零股 ATR 試算)
-        # ==========================================
         st.markdown("---")
         st.markdown("### 🎯 第三區：同頁極速狙擊鏡 (免切換分頁直接透視)")
         
@@ -191,7 +323,6 @@ def render_strong_system(add_to_watchlist_fn, tg_token, tg_chat_id, mobile_confi
 
                     sc1, sc2, sc3 = st.columns(3)
                     with sc1:
-                        # 學生友善：最低 1,000 元起跳！
                         user_cap = st.number_input("💵 預計投入總預算 (元，支援千元小資)", min_value=1000, value=10000, step=1000)
                     with sc2:
                         risk_tol = st.slider("⚠️ 單筆最大可承受虧損 (%)", 0.5, 5.0, 2.0, 0.5)
